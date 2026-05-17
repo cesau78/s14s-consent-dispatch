@@ -1,0 +1,21 @@
+{
+  "apiVersion": "dsr/v1",
+  "kind": "CorrectionStatusEvent",
+  "metadata": {
+    "uid": "22880925-aac5-42f9-a653-cb6921d361ff",
+    "tenant": "your-tenant"
+  },
+  "event": {
+    "status": "in_progress",
+    "identities": [
+      {
+        "identitySpace": "person_key",
+        "identityValue": "vibes-person-abc123"
+      },
+      {
+        "identitySpace": "mobile",
+        "identityValue": "+12145559876"
+      }
+    ]
+  }
+}

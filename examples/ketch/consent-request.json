@@ -1,0 +1,29 @@
+{
+  "apiVersion": "consent/v1",
+  "kind": "ConsentRequest",
+  "metadata": {
+    "uid": "d4e5f6a7-b8c9-0123-def0-234567890123",
+    "tenant": "your-tenant"
+  },
+  "request": {
+    "property": "your-property",
+    "environment": "production",
+    "regulation": "ccpa",
+    "jurisdiction": "usca",
+    "identities": [
+      {
+        "identitySpace": "account_id",
+        "identityValue": "crm-customer-99"
+      }
+    ],
+    "purposes": {
+      "email_mktg": "denied",
+      "sms_mktg": "granted"
+    },
+    "legalBasis": {
+      "email_mktg": "consent_optout",
+      "sms_mktg": "consent_optin"
+    },
+    "collectedAt": 1715900000
+  }
+}

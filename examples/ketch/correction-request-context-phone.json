@@ -1,0 +1,26 @@
+{
+  "apiVersion": "dsr/v1",
+  "kind": "CorrectionRequest",
+  "metadata": {
+    "uid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "tenant": "your-tenant"
+  },
+  "request": {
+    "property": "your-property",
+    "environment": "production",
+    "regulation": "ccpa",
+    "jurisdiction": "usca",
+    "identities": [
+      {
+        "identitySpace": "person_key",
+        "identityValue": "vibes-person-abc123"
+      }
+    ],
+    "context": {
+      "mobilePhone": "+13125550198",
+      "account_id": "crm-customer-99"
+    },
+    "submittedTimestamp": 1715900000,
+    "dueTimestamp": 1716500000
+  }
+}
