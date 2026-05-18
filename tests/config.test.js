@@ -24,6 +24,13 @@ describe('config', () => {
     expect(require('../src/config').trustProxy).toBe(false);
   });
 
+  test('treats blank webhook auth values as unset', () => {
+    process.env.KETCH_WEBHOOK_AUTH_VALUE = '  ';
+    delete process.env.KETCH_FORWARDER_AUTH;
+    jest.resetModules();
+    expect(require('../src/config').ketchWebhookAuthValue).toBeUndefined();
+  });
+
   test('parses list-based settings and legacy auth alias', () => {
     process.env.KETCH_WEBHOOK_PATHS = '/a,/b';
     process.env.KETCH_FORWARDER_AUTH = 'legacy-secret';

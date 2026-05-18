@@ -48,7 +48,11 @@ const config = {
   },
   /** Shared secret Ketch includes on outbound webhook calls (server-to-server only). */
   get ketchWebhookAuthValue() {
-    return env('KETCH_WEBHOOK_AUTH_VALUE') || env('KETCH_FORWARDER_AUTH');
+    const raw = env('KETCH_WEBHOOK_AUTH_VALUE') || env('KETCH_FORWARDER_AUTH');
+    if (!raw || !String(raw).trim()) {
+      return undefined;
+    }
+    return String(raw).trim();
   },
   /** When empty, all caller IPs are accepted; otherwise only listed IPs/CIDRs. */
   get ketchAllowedIps() {
@@ -88,4 +92,8 @@ const config = {
   }
 };
 
+/** Local-only webhook secret; also requires a loopback / Docker bridge TCP peer. */
+const LOCAL_DEV_WEBHOOK_AUTH_VALUE = 'Bearer local-dev';
+
 module.exports = config;
+module.exports.LOCAL_DEV_WEBHOOK_AUTH_VALUE = LOCAL_DEV_WEBHOOK_AUTH_VALUE;

@@ -1,0 +1,19 @@
+# Dev overlay: consent-dispatch + WireMock as a stand-in for the Vibes Mobile DB API.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+services:
+  consent-dispatch:
+    env_file:
+      - .env.dev
+    environment:
+      VIBES_API_BASE_URL: http://wiremock:8080
+    depends_on:
+      wiremock:
+        condition: service_started
+
+  wiremock:
+    image: wiremock/wiremock:3.9.1
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./docker/wiremock:/home/wiremock
+    command: ["--global-response-templating", "--verbose"]

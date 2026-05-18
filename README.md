@@ -19,6 +19,7 @@ Repository: [github.com/cesau78/s14s-consent-dispatch](https://github.com/cesau7
 - [Phone Change Flow](#phone-change-flow)
 - [Vibes Integration](#vibes-integration)
 - [Configuration](#configuration)
+- [Local development testing](#local-development-testing)
 - [Docker](#docker)
 - [Testing](#testing)
 - [Project Structure](#project-structure)
@@ -123,7 +124,7 @@ Inbound Ketch routes are protected by `ketchWebhookIpAllowlist` and `ketchWebhoo
 |----------|-------------|
 | `KETCH_WEBHOOK_PATHS` | Comma-separated POST paths to register (default `/ketch/webhook,/ketch/forwarder`) |
 | `KETCH_WEBHOOK_AUTH_HEADER` | Header name Ketch must send (default `Authorization`) |
-| `KETCH_WEBHOOK_AUTH_VALUE` | Exact header value Ketch must send; when unset, only localhost (`127.0.0.1` / `::1`) may call webhooks |
+| `KETCH_WEBHOOK_AUTH_VALUE` | Exact header value Ketch must send (required). Use `Bearer local-dev` for local work — that value also requires a loopback or Docker-bridge TCP peer (`X-Forwarded-For` is ignored). |
 | `KETCH_ALLOWED_IPS` | Comma-separated IPs or CIDR blocks (e.g. `203.0.113.4,198.51.100.0/24`); unset allows any IP |
 | `TRUST_PROXY` | `true`, `false`, or hop count — use `true` behind a load balancer so `X-Forwarded-For` is honored |
 
@@ -452,7 +453,101 @@ Acknowledged with `204`; no Vibes call. Included so you can verify routing and a
 
 ---
 
-### Local curl
+Each file below lives in [`examples/ketch/`](examples/ketch/). See [Local development testing](#local-development-testing) for how to run them against a local stack.
+
+| File | Kind | What it exercises | HTTP | Vibes (mock or real) |
+|------|------|-------------------|------|----------------------|
+| [`correction-request-phone.json`](examples/ketch/correction-request-phone.json) | `CorrectionRequest` | Phone in **identities** (`phone` space) plus `person_key` and `account_id` | `200` + `CorrectionResponse` | `PUT .../persons/vibes-person-abc123` |
+| [`correction-request-context-phone.json`](examples/ketch/correction-request-context-phone.json) | `CorrectionRequest` | Phone in **context** (`mobilePhone`) with `person_key` | `200` + `CorrectionResponse` | `PUT .../persons/vibes-person-abc123` |
+| [`correction-request-formdata-phone.json`](examples/ketch/correction-request-formdata-phone.json) | `CorrectionRequest` | Phone in **subject.formData** (`mobile_phone`); only `external_person_id` identity | `200` + `CorrectionResponse` | `POST .../persons/` |
+| [`correction-status-event-phone.json`](examples/ketch/correction-status-event-phone.json) | `CorrectionStatusEvent` | Phone in **event** envelope (`mobile` identity) | `204` | `PUT .../persons/vibes-person-abc123` |
+| [`correction-request-no-phone.json`](examples/ketch/correction-request-no-phone.json) | `CorrectionRequest` | Correction with `person_key` but **no** phone field | `204` | None |
+| [`consent-request.json`](examples/ketch/consent-request.json) | `ConsentRequest` | Consent-only message (future work); routing and auth only | `204` | None |
+
+---
+
+## Local development testing
+
+There is no official Docker image for the Ketch cloud or the Vibes Mobile DB API. For local work you simulate **inbound Ketch** webhooks with the JSON files above and **outbound Vibes** with [WireMock](https://wiremock.org/) (included in this repo) or your own Vibes sandbox credentials.
+
+### Option A — Docker Compose + WireMock (recommended)
+
+Starts **consent-dispatch** on port **3000** and a **WireMock** Vibes stub on port **8080**.
+
+```bash
+cp .env.dev .env.dev.local   # optional; .env.dev is committed with safe defaults
+npm run dev:compose
+# or: docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+```
+
+| Service | URL |
+|---------|-----|
+| Dispatch | `http://localhost:3000` (`GET /health`) |
+| WireMock (Vibes stub) | `http://localhost:8080` |
+| WireMock admin | `http://localhost:8080/__admin` |
+
+`.env.dev` points `VIBES_*` at company key `local-dev` and sets `KETCH_WEBHOOK_AUTH_VALUE=Bearer local-dev`. That header is always required; the service also checks the **direct TCP peer** (not `X-Forwarded-For`) is loopback or a Docker bridge address so a remote client cannot spoof local dev by sending the header alone.
+
+Run every example payload in one step:
+
+```bash
+npm run smoke:local:docker
+```
+
+Or POST a single file:
+
+```bash
+curl -sS -X POST "http://localhost:3000/ketch/webhook" \
+  -H "Authorization: Bearer local-dev" \
+  -H "Content-Type: application/json" \
+  --data-binary "@examples/ketch/correction-request-phone.json"
+```
+
+WireMock stubs live under [`docker/wiremock/mappings/`](docker/wiremock/mappings/) (`PUT` and `POST` person endpoints for `local-dev`).
+
+### Option B — Node on the host + WireMock
+
+Terminal 1 — Vibes stub:
+
+```bash
+docker run --rm -p 8080:8080 \
+  -v "%cd%/docker/wiremock:/home/wiremock" \
+  wiremock/wiremock:3.9.1
+```
+
+On macOS/Linux use `` `pwd` `` instead of `%cd%`.
+
+Terminal 2 — dispatch (copy `.env.dev` or set vars manually):
+
+```bash
+cp .env.dev .env
+# For npm on the host, point Vibes at the stub on localhost:
+# VIBES_API_BASE_URL=http://localhost:8080
+npm start
+```
+
+Set `KETCH_WEBHOOK_AUTH_VALUE=Bearer local-dev` in `.env` (or copy `.env.dev`), then:
+
+```bash
+npm run smoke:local
+```
+
+### Option C — Real Vibes sandbox
+
+Copy `.env.example` to `.env`, set `VIBES_COMPANY_KEY`, `VIBES_API_USERNAME`, and `VIBES_API_PASSWORD` from your Vibes account, and replace placeholder `person_key` / `external_person_id` values in the example JSON with records that exist in that tenant. Leave `VIBES_API_BASE_URL` at `https://public-api.vibescm.com`.
+
+### Manual curl
+
+Local (`.env.dev` / `Bearer local-dev`):
+
+```bash
+curl -sS -X POST "http://localhost:3000/ketch/webhook" \
+  -H "Authorization: Bearer local-dev" \
+  -H "Content-Type: application/json" \
+  --data-binary "@examples/ketch/correction-request-phone.json"
+```
+
+Production (unique secret registered in Ketch):
 
 ```bash
 curl -sS -X POST "http://localhost:3000/ketch/webhook" \
@@ -460,6 +555,10 @@ curl -sS -X POST "http://localhost:3000/ketch/webhook" \
   -H "Content-Type: application/json" \
   --data-binary "@examples/ketch/correction-request-phone.json"
 ```
+
+### Connecting real Ketch to your laptop
+
+Use a tunnel (ngrok, Cloudflare Tunnel, etc.) to expose `https://…` → `localhost:3000`, then register that URL and the same `Authorization` value in the Ketch Forwarder endpoint UI.
 
 ---
 
@@ -550,12 +649,19 @@ All list variables are comma-separated and matched case-insensitively.
 
 ## Docker
 
+**Production-style** (dispatch only; configure `.env` with real Vibes credentials):
+
 ```bash
-# Build and run with docker compose
 docker compose up --build
 ```
 
-The `Dockerfile` uses Node 22 Alpine, installs production dependencies only, and exposes port 3000. Mount or inject `.env` via your orchestrator’s secrets mechanism in production (do not commit `.env`).
+**Local dev** (dispatch + WireMock Vibes stub — see [Local development testing](#local-development-testing)):
+
+```bash
+npm run dev:compose
+```
+
+The `Dockerfile` uses Node 22 Alpine, installs production dependencies only, and exposes port 3000. Mount or inject `.env` via your orchestrator’s secrets mechanism in production (do not commit `.env`). Committed [`.env.dev`](.env.dev) is for the WireMock dev stack only.
 
 ---
 
@@ -605,10 +711,14 @@ s14s-consent-dispatch/
 │       ├── phoneNormalizer.js
 │       └── vibesClient.js
 ├── examples/ketch/          # Sample Ketch webhook JSON bodies
+├── docker/wiremock/         # WireMock stubs for local Vibes API
+├── scripts/smoke-local.js   # POST all example payloads (npm run smoke:local)
 ├── tests/
 ├── Dockerfile
 ├── docker-compose.yml
+├── docker-compose.dev.yml   # Overlay: WireMock + .env.dev
 ├── .env.example
+├── .env.dev                 # Safe defaults for local Docker dev
 └── package.json
 ```
 

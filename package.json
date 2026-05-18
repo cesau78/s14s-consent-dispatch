@@ -8,6 +8,9 @@
     "test": "jest --coverage --forceExit --detectOpenHandles",
     "test:watch": "jest --watch",
     "build": "npm test",
+    "dev:compose": "docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build",
+    "smoke:local": "node scripts/smoke-local.js",
+    "smoke:local:docker": "node scripts/smoke-local.js",
     "prepare": "husky"
   },
   "license": "ISC",

@@ -1,0 +1,17 @@
+{
+  "request": {
+    "method": "POST",
+    "urlPath": "/companies/local-dev/mobiledb/persons/"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "person_key": "new-person-from-post",
+      "external_person_id": "crm-customer-44",
+      "status": "created"
+    }
+  }
+}

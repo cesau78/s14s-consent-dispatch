@@ -1,0 +1,16 @@
+{
+  "request": {
+    "method": "PUT",
+    "urlPathPattern": "/companies/local-dev/mobiledb/persons/[^/]+"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "person_key": "vibes-person-abc123",
+      "status": "updated"
+    }
+  }
+}
