@@ -1,3 +1,6 @@
+/**
+ * Normalize phone numbers to E.164 for Vibes API v2 (e.g. +12145551234).
+ */
 const { parsePhoneNumberFromString } = require('libphonenumber-js');
 
 function normalizePhoneToE164(rawPhone, defaultCountry = 'US') {

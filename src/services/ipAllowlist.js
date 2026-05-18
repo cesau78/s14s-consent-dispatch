@@ -1,3 +1,7 @@
+/**
+ * IP allowlist for inbound Ketch webhooks. Supports single hosts and CIDR ranges.
+ * An empty allowlist means all IPs are permitted.
+ */
 const { BlockList } = require('net');
 const { normalizeIp } = require('./clientIp');
 

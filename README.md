@@ -117,13 +117,13 @@ Default webhook paths: `/ketch/webhook`, `/ketch/forwarder` (both use the same c
 
 ### Webhook security
 
-Inbound Ketch routes are protected by `ketchWebhookGuard` (IP allowlist + shared header secret). Configure in `.env`:
+Inbound Ketch routes are protected by `ketchWebhookIpAllowlist` and `ketchWebhookAuth` (in that order). Configure in `.env`:
 
 | Variable | Description |
 |----------|-------------|
 | `KETCH_WEBHOOK_PATHS` | Comma-separated POST paths to register (default `/ketch/webhook,/ketch/forwarder`) |
 | `KETCH_WEBHOOK_AUTH_HEADER` | Header name Ketch must send (default `Authorization`) |
-| `KETCH_WEBHOOK_AUTH_VALUE` | Exact header value Ketch must send; unset disables auth (dev only) |
+| `KETCH_WEBHOOK_AUTH_VALUE` | Exact header value Ketch must send; when unset, only localhost (`127.0.0.1` / `::1`) may call webhooks |
 | `KETCH_ALLOWED_IPS` | Comma-separated IPs or CIDR blocks (e.g. `203.0.113.4,198.51.100.0/24`); unset allows any IP |
 | `TRUST_PROXY` | `true`, `false`, or hop count — use `true` behind a load balancer so `X-Forwarded-For` is honored |
 
@@ -573,7 +573,7 @@ A **husky** `pre-commit` hook runs `npm run build`, which fails the commit if co
 
 Jest + Supertest cover:
 
-- Webhook guard (auth header, IP allowlist, configurable paths)
+- Webhook IP allowlist and auth middleware (configurable paths)
 - Payload parsing (identities, context, form data, status events)
 - Ketch phone callback-handler (correction flow, ignored kinds, validation errors)
 - Vibes client (PUT vs POST, error handling)
@@ -592,7 +592,8 @@ s14s-consent-dispatch/
 │   ├── server.js              # Entry point
 │   ├── config.js              # Environment configuration
 │   ├── middleware/
-│   │   └── ketchWebhookGuard.js
+│   │   ├── ketchWebhookIpAllowlist.js
+│   │   └── ketchWebhookAuth.js
 │   ├── routes/
 │   │   └── ketchWebhookHandler.js
 │   ├── callback-handlers/

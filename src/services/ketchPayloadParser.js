@@ -1,3 +1,9 @@
+/**
+ * Extract phone numbers and Vibes identifiers from Ketch Forwarder payloads.
+ *
+ * Ketch may place the MDN in identities, context variables, or subject form fields
+ * depending on tenant configuration. Identity space names are configurable via env.
+ */
 const config = require('../config');
 const { normalizePhoneToE164 } = require('./phoneNormalizer');
 
@@ -14,6 +20,7 @@ function matchesPhoneKey(key) {
   );
 }
 
+/** Case-insensitive lookup for context / formData keys. */
 function readContextValue(context, key) {
   if (!context || typeof context !== 'object') {
     return null;
@@ -96,6 +103,7 @@ function extractPhoneFromContext(context) {
     }
   }
 
+  // Also scan raw context keys (e.g. mobile) that match phone identity spaces.
   for (const [key, value] of Object.entries(context)) {
     if (!matchesPhoneKey(key)) {
       continue;

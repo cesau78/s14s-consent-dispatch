@@ -1,3 +1,10 @@
+/**
+ * Ketch Forwarder callback-handler: phone number corrections → Vibes Mobile DB.
+ *
+ * Handles CorrectionRequest (returns a CorrectionResponse) and
+ * CorrectionStatusEvent (returns 204). Other message kinds are acknowledged
+ * without calling Vibes.
+ */
 const { parsePhoneChangePayload } = require('../services/ketchPayloadParser');
 const vibesClient = require('../services/vibesClient');
 
@@ -6,6 +13,7 @@ const PHONE_CHANGE_KINDS = new Set([
   'CorrectionStatusEvent'
 ]);
 
+/** Ketch uses `request` for inbound messages and `event` for status updates. */
 function getEnvelopeSection(body) {
   if (body && typeof body.request === 'object') {
     return body.request;
@@ -16,6 +24,7 @@ function getEnvelopeSection(body) {
   return null;
 }
 
+/** Required by the Ketch Forwarder Correction flow (dsr/v1). */
 function buildCorrectionResponse(metadata) {
   return {
     apiVersion: 'dsr/v1',
@@ -42,6 +51,7 @@ async function handleKetchPhoneCallback(body) {
 
   const phoneChange = parsePhoneChangePayload(body);
   if (!phoneChange) {
+    // Correction without a phone field — nothing to sync.
     return { status: 204, body: null };
   }
 

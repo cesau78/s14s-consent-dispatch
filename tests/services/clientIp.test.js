@@ -1,4 +1,4 @@
-const { getClientIp, normalizeIp } = require('../../src/services/clientIp');
+const { getClientIp, normalizeIp, isLocalhost } = require('../../src/services/clientIp');
 
 describe('clientIp', () => {
   test('normalizeIp returns empty string for falsy values', () => {
@@ -34,6 +34,13 @@ describe('clientIp', () => {
     };
 
     expect(getClientIp(req)).toBe('');
+  });
+
+  test('isLocalhost recognizes loopback addresses', () => {
+    expect(isLocalhost('127.0.0.1')).toBe(true);
+    expect(isLocalhost('::1')).toBe(true);
+    expect(isLocalhost('::ffff:127.0.0.1')).toBe(true);
+    expect(isLocalhost('10.0.0.1')).toBe(false);
   });
 
   test('getClientIp falls back to the socket remote address', () => {

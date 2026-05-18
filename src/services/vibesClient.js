@@ -1,3 +1,6 @@
+/**
+ * Vibes Mobile Database API client for updating subscriber phone numbers (MDN).
+ */
 const config = require('../config');
 
 function getAuthHeader() {
@@ -50,6 +53,11 @@ async function vibesRequest(url, options) {
   return body;
 }
 
+/**
+ * Sync a phone change to Vibes.
+ * - With personKey: update an existing person (PUT).
+ * - With only externalPersonId: create or merge via collection POST.
+ */
 async function updatePersonPhone({ personKey, externalPersonId, phone }) {
   if (!config.vibesCompanyKey) {
     throw new Error('VIBES_COMPANY_KEY is required');

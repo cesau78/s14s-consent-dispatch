@@ -1,3 +1,4 @@
+// Process entry point: load .env, then start the HTTP server.
 require('dotenv').config();
 const app = require('./app');
 const config = require('./config');

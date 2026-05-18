@@ -1,3 +1,9 @@
+/**
+ * Environment-backed configuration. Values are read on each access so tests can
+ * override process.env without restarting the process.
+ */
+
+/** Parse comma-separated env vars (e.g. webhook paths, allowed IPs, identity spaces). */
 function splitList(value) {
   return (value || '')
     .split(',')
@@ -9,6 +15,10 @@ function env(name, defaultValue = '') {
   return process.env[name] || defaultValue;
 }
 
+/**
+ * Express "trust proxy" setting. Use true (or a hop count) when running behind a
+ * load balancer so X-Forwarded-For is honored for IP allowlisting.
+ */
 function parseTrustProxy(value) {
   if (value === 'true') {
     return true;
@@ -28,15 +38,19 @@ const config = {
   get trustProxy() {
     return parseTrustProxy(env('TRUST_PROXY', 'false'));
   },
+  /** POST paths registered for inbound Ketch webhooks (see KETCH_WEBHOOK_PATHS). */
   get ketchWebhookPaths() {
     return splitList(env('KETCH_WEBHOOK_PATHS', '/ketch/webhook,/ketch/forwarder'));
   },
+  /** Header name Ketch must send (configured to match the Ketch Forwarder endpoint). */
   get ketchWebhookAuthHeader() {
     return env('KETCH_WEBHOOK_AUTH_HEADER', 'Authorization');
   },
+  /** Shared secret Ketch includes on outbound webhook calls (server-to-server only). */
   get ketchWebhookAuthValue() {
     return env('KETCH_WEBHOOK_AUTH_VALUE') || env('KETCH_FORWARDER_AUTH');
   },
+  /** When empty, all caller IPs are accepted; otherwise only listed IPs/CIDRs. */
   get ketchAllowedIps() {
     return splitList(env('KETCH_ALLOWED_IPS'));
   },
@@ -68,6 +82,7 @@ const config = {
   get vibesApiPassword() {
     return env('VIBES_API_PASSWORD');
   },
+  /** API v2 expects MDNs in E.164 format (+1...). */
   get vibesApiVersion() {
     return env('VIBES_API_VERSION', '2');
   }
