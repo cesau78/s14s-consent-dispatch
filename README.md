@@ -710,6 +710,26 @@ The `Dockerfile` uses Node 22 Alpine, installs production dependencies only, and
 
 ---
 
+## Continuous security
+
+GitHub Actions and Dependabot run on every push/PR to `main` (see [`.github/workflows/`](.github/workflows/) and [`.github/dependabot.yml`](.github/dependabot.yml)). No paid third-party scanners are required.
+
+| Tool | What it checks | Setup |
+|------|----------------|--------|
+| **CodeQL** | SAST on JavaScript (`src/`) — injection, unsafe flows, etc. | None — runs automatically |
+| **Dependency Review** | Blocks PRs that add vulnerable dependencies | None — uses GitHub Dependency Graph |
+| **Dependabot** | npm + Actions version and security updates | None — opens weekly PRs |
+
+Findings appear under **Security → Code scanning alerts** (CodeQL) and **Dependabot alerts** (dependencies). Enable [GitHub secret scanning](https://docs.github.com/en/code-security/secret-scanning) on the repo for leaked credentials in git history (separate from SAST).
+
+Local dependency check:
+
+```bash
+npm audit
+```
+
+---
+
 ## Testing
 
 ```bash
@@ -767,6 +787,8 @@ s14s-consent-dispatch/
 ├── Dockerfile
 ├── docker-compose.yml
 ├── docker-compose.dev.yml   # Overlay: WireMock + .env.dev
+├── .github/workflows/       # CodeQL, dependency review
+├── .github/dependabot.yml
 ├── .env.example
 ├── .env.dev                 # Safe defaults for local Docker dev
 └── package.json
