@@ -24,22 +24,24 @@ describe('config', () => {
     expect(require('../src/config').trustProxy).toBe(false);
   });
 
-  test('treats blank webhook auth values as unset', () => {
-    process.env.KETCH_WEBHOOK_AUTH_VALUE = '  ';
+  test('treats blank callback auth values as unset', () => {
+    process.env.KETCH_CALLBACK_AUTH_VALUE = '  ';
     delete process.env.KETCH_FORWARDER_AUTH;
     jest.resetModules();
-    expect(require('../src/config').ketchWebhookAuthValue).toBeUndefined();
+    expect(require('../src/config').ketchCallbackAuthValue).toBeUndefined();
   });
 
-  test('parses list-based settings and legacy auth alias', () => {
+  test('parses list-based settings and legacy env aliases', () => {
     process.env.KETCH_WEBHOOK_PATHS = '/a,/b';
     process.env.KETCH_FORWARDER_AUTH = 'legacy-secret';
+    delete process.env.KETCH_CALLBACK_PATHS;
+    delete process.env.KETCH_CALLBACK_AUTH_VALUE;
     delete process.env.KETCH_WEBHOOK_AUTH_VALUE;
     jest.resetModules();
     const config = require('../src/config');
 
-    expect(config.ketchWebhookPaths).toEqual(['/a', '/b']);
-    expect(config.ketchWebhookAuthValue).toBe('legacy-secret');
+    expect(config.ketchCallbackPaths).toEqual(['/a', '/b']);
+    expect(config.ketchCallbackAuthValue).toBe('legacy-secret');
   });
 
   test('defaults port when PORT is not numeric', () => {

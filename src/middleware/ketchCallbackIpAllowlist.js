@@ -1,12 +1,12 @@
 /**
- * Restrict inbound Ketch webhooks to configured caller IPs/CIDRs (KETCH_ALLOWED_IPS).
+ * Restrict inbound Ketch callbacks to configured caller IPs/CIDRs (KETCH_ALLOWED_IPS).
  * When the allowlist is empty, all IPs are permitted.
  */
 const config = require('../config');
 const { getClientIp } = require('../services/clientIp');
 const { isIpAllowed } = require('../services/ipAllowlist');
 
-function ketchWebhookIpAllowlist(req, res, next) {
+function ketchCallbackIpAllowlist(req, res, next) {
   const clientIp = getClientIp(req);
 
   if (!isIpAllowed(clientIp, config.ketchAllowedIps)) {
@@ -16,4 +16,4 @@ function ketchWebhookIpAllowlist(req, res, next) {
   return next();
 }
 
-module.exports = ketchWebhookIpAllowlist;
+module.exports = ketchCallbackIpAllowlist;

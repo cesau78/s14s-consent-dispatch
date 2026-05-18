@@ -10,10 +10,10 @@
  */
 const fs = require('fs');
 const path = require('path');
-const { LOCAL_DEV_WEBHOOK_AUTH_VALUE } = require('../src/config');
+const { LOCAL_DEV_CALLBACK_AUTH_VALUE } = require('../src/config');
 
 const baseUrl = (process.env.SMOKE_BASE_URL || 'http://localhost:3000').replace(/\/$/, '');
-const auth = process.env.SMOKE_AUTH || LOCAL_DEV_WEBHOOK_AUTH_VALUE;
+const auth = process.env.SMOKE_AUTH || LOCAL_DEV_CALLBACK_AUTH_VALUE;
 
 const cases = [
   {

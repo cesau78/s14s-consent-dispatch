@@ -3,7 +3,7 @@
  * override process.env without restarting the process.
  */
 
-/** Parse comma-separated env vars (e.g. webhook paths, allowed IPs, identity spaces). */
+/** Parse comma-separated env vars (e.g. callback paths, allowed IPs, identity spaces). */
 function splitList(value) {
   return (value || '')
     .split(',')
@@ -13,6 +13,16 @@ function splitList(value) {
 
 function env(name, defaultValue = '') {
   return process.env[name] || defaultValue;
+}
+
+/** First defined env var wins (supports renamed keys with legacy fallbacks). */
+function envFirst(names, defaultValue = '') {
+  for (const name of names) {
+    if (process.env[name]) {
+      return process.env[name];
+    }
+  }
+  return defaultValue;
 }
 
 /**
@@ -38,17 +48,26 @@ const config = {
   get trustProxy() {
     return parseTrustProxy(env('TRUST_PROXY', 'false'));
   },
-  /** POST paths registered for inbound Ketch webhooks (see KETCH_WEBHOOK_PATHS). */
-  get ketchWebhookPaths() {
-    return splitList(env('KETCH_WEBHOOK_PATHS', '/ketch/webhook,/ketch/forwarder'));
+  /** POST paths registered for inbound Ketch callbacks (see KETCH_CALLBACK_PATHS). */
+  get ketchCallbackPaths() {
+    return splitList(
+      envFirst(
+        ['KETCH_CALLBACK_PATHS', 'KETCH_WEBHOOK_PATHS'],
+        '/ketch/webhook,/ketch/forwarder'
+      )
+    );
   },
   /** Header name Ketch must send (configured to match the Ketch Forwarder endpoint). */
-  get ketchWebhookAuthHeader() {
-    return env('KETCH_WEBHOOK_AUTH_HEADER', 'Authorization');
+  get ketchCallbackAuthHeader() {
+    return envFirst(['KETCH_CALLBACK_AUTH_HEADER', 'KETCH_WEBHOOK_AUTH_HEADER'], 'Authorization');
   },
-  /** Shared secret Ketch includes on outbound webhook calls (server-to-server only). */
-  get ketchWebhookAuthValue() {
-    const raw = env('KETCH_WEBHOOK_AUTH_VALUE') || env('KETCH_FORWARDER_AUTH');
+  /** Shared secret Ketch includes on outbound callback calls (server-to-server only). */
+  get ketchCallbackAuthValue() {
+    const raw = envFirst([
+      'KETCH_CALLBACK_AUTH_VALUE',
+      'KETCH_WEBHOOK_AUTH_VALUE',
+      'KETCH_FORWARDER_AUTH'
+    ]);
     if (!raw || !String(raw).trim()) {
       return undefined;
     }
@@ -92,8 +111,8 @@ const config = {
   }
 };
 
-/** Local-only webhook secret; also requires a loopback / Docker bridge TCP peer. */
-const LOCAL_DEV_WEBHOOK_AUTH_VALUE = 'Bearer local-dev';
+/** Local-only callback secret; also requires a loopback / Docker bridge TCP peer. */
+const LOCAL_DEV_CALLBACK_AUTH_VALUE = 'Bearer local-dev';
 
 module.exports = config;
-module.exports.LOCAL_DEV_WEBHOOK_AUTH_VALUE = LOCAL_DEV_WEBHOOK_AUTH_VALUE;
+module.exports.LOCAL_DEV_CALLBACK_AUTH_VALUE = LOCAL_DEV_CALLBACK_AUTH_VALUE;

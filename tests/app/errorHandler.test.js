@@ -14,7 +14,7 @@ describe('app error handler', () => {
     jest.doMock('../../src/services/vibesClient', () => ({
       updatePersonPhone: jest.fn(mockImpl)
     }));
-    process.env.KETCH_WEBHOOK_AUTH_VALUE = 'Bearer test-token';
+    process.env.KETCH_CALLBACK_AUTH_VALUE = 'Bearer test-token';
     process.env.VIBES_COMPANY_KEY = 'company-1';
     process.env.VIBES_API_USERNAME = 'user';
     process.env.VIBES_API_PASSWORD = 'pass';

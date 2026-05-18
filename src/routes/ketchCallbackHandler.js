@@ -4,7 +4,7 @@
  */
 const { handleKetchPhoneCallback } = require('../callback-handlers/ketchPhoneCallbackHandler');
 
-async function ketchWebhookHandler(req, res, next) {
+async function ketchCallbackHandler(req, res, next) {
   try {
     const result = await handleKetchPhoneCallback(req.body);
     if (result.body) {
@@ -17,4 +17,4 @@ async function ketchWebhookHandler(req, res, next) {
   }
 }
 
-module.exports = ketchWebhookHandler;
+module.exports = ketchCallbackHandler;

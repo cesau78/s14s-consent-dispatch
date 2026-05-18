@@ -1,5 +1,5 @@
 /**
- * Resolve the caller IP for webhook allowlisting, including behind a reverse proxy.
+ * Resolve the caller IP for callback allowlisting, including behind a reverse proxy.
  */
 
 function normalizeIp(ip) {
@@ -37,7 +37,7 @@ function isLocalhost(clientIp) {
 
 /**
  * True when the direct TCP peer is loopback or a Docker/host bridge address
- * (host → published container port). Not used for production webhook auth.
+ * (host → published container port). Not used for production callback auth.
  */
 function isLocalMachinePeer(clientIp) {
   const normalized = normalizeIp(clientIp);

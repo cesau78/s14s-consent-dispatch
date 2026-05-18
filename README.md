@@ -92,8 +92,8 @@ Register a **Forwarder** endpoint in the Ketch UI (this is Ketch’s name for th
 |---------|--------|
 | **URL** | `https://<your-host>` + one of your configured paths (default `/ketch/webhook`) |
 | **Protocol** | HTTPS |
-| **Header** | Same name as `KETCH_WEBHOOK_AUTH_HEADER` (default `Authorization`) |
-| **Header value** | Same string as `KETCH_WEBHOOK_AUTH_VALUE` in `.env` |
+| **Header** | Same name as `KETCH_CALLBACK_AUTH_HEADER` (default `Authorization`) |
+| **Header value** | Same string as `KETCH_CALLBACK_AUTH_VALUE` in `.env` |
 
 ### Supported message kinds (phone sync)
 
@@ -112,23 +112,23 @@ Phone corrections align with Ketch’s [Correction](https://github.com/ketch-com
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/health` | Liveness probe (`{ "status": "ok" }`) — not IP/auth protected |
-| `POST` | *(configured)* | Inbound Ketch webhooks — see `KETCH_WEBHOOK_PATHS` |
+| `POST` | *(configured)* | Inbound Ketch callbacks — see `KETCH_CALLBACK_PATHS` |
 
 Default webhook paths: `/ketch/webhook`, `/ketch/forwarder` (both use the same callback-handler).
 
 ### Webhook security
 
-Inbound Ketch routes are protected by `ketchWebhookIpAllowlist` and `ketchWebhookAuth` (in that order). Configure in `.env`:
+Inbound Ketch routes are protected by `ketchCallbackIpAllowlist` and `ketchCallbackAuth` (in that order). Configure in `.env`:
 
 | Variable | Description |
 |----------|-------------|
-| `KETCH_WEBHOOK_PATHS` | Comma-separated POST paths to register (default `/ketch/webhook,/ketch/forwarder`) |
-| `KETCH_WEBHOOK_AUTH_HEADER` | Header name Ketch must send (default `Authorization`) |
-| `KETCH_WEBHOOK_AUTH_VALUE` | Exact header value Ketch must send (required). Use `Bearer local-dev` for local work — that value also requires a loopback or Docker-bridge TCP peer (`X-Forwarded-For` is ignored). |
+| `KETCH_CALLBACK_PATHS` | Comma-separated POST paths to register (default `/ketch/webhook,/ketch/forwarder`) |
+| `KETCH_CALLBACK_AUTH_HEADER` | Header name Ketch must send (default `Authorization`) |
+| `KETCH_CALLBACK_AUTH_VALUE` | Exact header value Ketch must send (required). Use `Bearer local-dev` for local work — that value also requires a loopback or Docker-bridge TCP peer (`X-Forwarded-For` is ignored). |
 | `KETCH_ALLOWED_IPS` | Comma-separated IPs or CIDR blocks (e.g. `203.0.113.4,198.51.100.0/24`); unset allows any IP |
 | `TRUST_PROXY` | `true`, `false`, or hop count — use `true` behind a load balancer so `X-Forwarded-For` is honored |
 
-`KETCH_FORWARDER_AUTH` is still accepted as a legacy alias for `KETCH_WEBHOOK_AUTH_VALUE`.
+Legacy env names (`KETCH_WEBHOOK_PATHS`, `KETCH_WEBHOOK_AUTH_HEADER`, `KETCH_WEBHOOK_AUTH_VALUE`, `KETCH_FORWARDER_AUTH`) are still read if the `KETCH_CALLBACK_*` vars are unset.
 
 Ketch sends the secret from **their servers only**; it is not returned to the data subject’s browser. Restrict `KETCH_ALLOWED_IPS` to Ketch egress ranges once your account team provides them.
 
@@ -486,7 +486,7 @@ npm run dev:compose
 | WireMock (Vibes stub) | `http://localhost:8080` |
 | WireMock admin | `http://localhost:8080/__admin` |
 
-`.env.dev` points `VIBES_*` at company key `local-dev` and sets `KETCH_WEBHOOK_AUTH_VALUE=Bearer local-dev`. That header is always required; the service also checks the **direct TCP peer** (not `X-Forwarded-For`) is loopback or a Docker bridge address so a remote client cannot spoof local dev by sending the header alone.
+`.env.dev` points `VIBES_*` at company key `local-dev` and sets `KETCH_CALLBACK_AUTH_VALUE=Bearer local-dev`. That header is always required; the service also checks the **direct TCP peer** (not `X-Forwarded-For`) is loopback or a Docker bridge address so a remote client cannot spoof local dev by sending the header alone.
 
 Run every example payload in one step:
 
@@ -526,7 +526,7 @@ cp .env.dev .env
 npm start
 ```
 
-Set `KETCH_WEBHOOK_AUTH_VALUE=Bearer local-dev` in `.env` (or copy `.env.dev`), then:
+Set `KETCH_CALLBACK_AUTH_VALUE=Bearer local-dev` in `.env` (or copy `.env.dev`), then:
 
 ```bash
 npm run smoke:local
@@ -627,9 +627,9 @@ Copy `.env.example` to `.env` and set values before running in production.
 PORT=3000
 TRUST_PROXY=true
 
-KETCH_WEBHOOK_PATHS=/ketch/webhook,/ketch/forwarder
-KETCH_WEBHOOK_AUTH_HEADER=Authorization
-KETCH_WEBHOOK_AUTH_VALUE=Bearer <shared-secret>
+KETCH_CALLBACK_PATHS=/ketch/webhook,/ketch/forwarder
+KETCH_CALLBACK_AUTH_HEADER=Authorization
+KETCH_CALLBACK_AUTH_VALUE=Bearer <shared-secret>
 KETCH_ALLOWED_IPS=203.0.113.4,198.51.100.0/24
 
 KETCH_VIBES_PERSON_KEY_IDENTITY_SPACES=vibes_person_key,person_key
@@ -679,7 +679,7 @@ A **husky** `pre-commit` hook runs `npm run build`, which fails the commit if co
 
 Jest + Supertest cover:
 
-- Webhook IP allowlist and auth middleware (configurable paths)
+- Callback IP allowlist and auth middleware (configurable paths)
 - Payload parsing (identities, context, form data, status events)
 - Ketch phone callback-handler (correction flow, ignored kinds, validation errors)
 - Vibes client (PUT vs POST, error handling)
@@ -698,10 +698,10 @@ s14s-consent-dispatch/
 │   ├── server.js              # Entry point
 │   ├── config.js              # Environment configuration
 │   ├── middleware/
-│   │   ├── ketchWebhookIpAllowlist.js
-│   │   └── ketchWebhookAuth.js
+│   │   ├── ketchCallbackIpAllowlist.js
+│   │   └── ketchCallbackAuth.js
 │   ├── routes/
-│   │   └── ketchWebhookHandler.js
+│   │   └── ketchCallbackHandler.js
 │   ├── callback-handlers/
 │   │   └── ketchPhoneCallbackHandler.js
 │   └── services/

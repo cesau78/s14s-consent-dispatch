@@ -1,7 +1,7 @@
 const request = require('supertest');
-const { LOCAL_DEV_WEBHOOK_AUTH_VALUE } = require('../../src/config');
+const { LOCAL_DEV_CALLBACK_AUTH_VALUE } = require('../../src/config');
 
-describe('ketchWebhookAuth', () => {
+describe('ketchCallbackAuth', () => {
   const envSnapshot = { ...process.env };
 
   afterEach(() => {
@@ -9,7 +9,8 @@ describe('ketchWebhookAuth', () => {
     jest.resetModules();
   });
 
-  test('rejects webhooks when no shared secret is configured', async () => {
+  test('rejects callbacks when no shared secret is configured', async () => {
+    delete process.env.KETCH_CALLBACK_AUTH_VALUE;
     delete process.env.KETCH_WEBHOOK_AUTH_VALUE;
     delete process.env.KETCH_FORWARDER_AUTH;
     jest.resetModules();
@@ -23,21 +24,21 @@ describe('ketchWebhookAuth', () => {
   });
 
   test('rejects an empty shared secret', async () => {
-    process.env.KETCH_WEBHOOK_AUTH_VALUE = '   ';
+    process.env.KETCH_CALLBACK_AUTH_VALUE = '   ';
     delete process.env.KETCH_FORWARDER_AUTH;
     jest.resetModules();
     const app = require('../../src/app');
 
     const res = await request(app)
       .post('/ketch/webhook')
-      .set('Authorization', LOCAL_DEV_WEBHOOK_AUTH_VALUE)
+      .set('Authorization', LOCAL_DEV_CALLBACK_AUTH_VALUE)
       .send({ kind: 'ConsentRequest', request: {} });
 
     expect(res.status).toBe(401);
   });
 
   test('requires Bearer local-dev and a local TCP peer for local dev auth', async () => {
-    process.env.KETCH_WEBHOOK_AUTH_VALUE = LOCAL_DEV_WEBHOOK_AUTH_VALUE;
+    process.env.KETCH_CALLBACK_AUTH_VALUE = LOCAL_DEV_CALLBACK_AUTH_VALUE;
     delete process.env.KETCH_FORWARDER_AUTH;
     jest.resetModules();
     const app = require('../../src/app');
@@ -49,13 +50,13 @@ describe('ketchWebhookAuth', () => {
 
     const authorized = await request(app)
       .post('/ketch/webhook')
-      .set('Authorization', LOCAL_DEV_WEBHOOK_AUTH_VALUE)
+      .set('Authorization', LOCAL_DEV_CALLBACK_AUTH_VALUE)
       .send({ kind: 'ConsentRequest', request: {} });
     expect(authorized.status).toBe(204);
   });
 
   test('rejects local-dev auth from a non-local TCP peer', async () => {
-    process.env.KETCH_WEBHOOK_AUTH_VALUE = LOCAL_DEV_WEBHOOK_AUTH_VALUE;
+    process.env.KETCH_CALLBACK_AUTH_VALUE = LOCAL_DEV_CALLBACK_AUTH_VALUE;
     jest.resetModules();
     jest
       .spyOn(require('../../src/services/clientIp'), 'isLocalDevCaller')
@@ -64,7 +65,7 @@ describe('ketchWebhookAuth', () => {
 
     const res = await request(app)
       .post('/ketch/webhook')
-      .set('Authorization', LOCAL_DEV_WEBHOOK_AUTH_VALUE)
+      .set('Authorization', LOCAL_DEV_CALLBACK_AUTH_VALUE)
       .send({ kind: 'ConsentRequest', request: {} });
 
     expect(res.status).toBe(403);
@@ -72,7 +73,7 @@ describe('ketchWebhookAuth', () => {
   });
 
   test('rejects local-dev auth when X-Forwarded-For spoofs loopback but peer is remote', async () => {
-    process.env.KETCH_WEBHOOK_AUTH_VALUE = LOCAL_DEV_WEBHOOK_AUTH_VALUE;
+    process.env.KETCH_CALLBACK_AUTH_VALUE = LOCAL_DEV_CALLBACK_AUTH_VALUE;
     jest.resetModules();
     const { isLocalDevCaller } = require('../../src/services/clientIp');
 
@@ -87,6 +88,7 @@ describe('ketchWebhookAuth', () => {
   });
 
   test('does not protect the health endpoint', async () => {
+    delete process.env.KETCH_CALLBACK_AUTH_VALUE;
     delete process.env.KETCH_WEBHOOK_AUTH_VALUE;
     delete process.env.KETCH_FORWARDER_AUTH;
     jest.resetModules();
@@ -97,8 +99,8 @@ describe('ketchWebhookAuth', () => {
   });
 
   test('enforces configured authorization header and value', async () => {
-    process.env.KETCH_WEBHOOK_AUTH_HEADER = 'Authorization';
-    process.env.KETCH_WEBHOOK_AUTH_VALUE = 'Bearer configured';
+    process.env.KETCH_CALLBACK_AUTH_HEADER = 'Authorization';
+    process.env.KETCH_CALLBACK_AUTH_VALUE = 'Bearer configured';
     delete process.env.KETCH_FORWARDER_AUTH;
     jest.resetModules();
     const app = require('../../src/app');
@@ -114,8 +116,8 @@ describe('ketchWebhookAuth', () => {
   });
 
   test('supports custom auth header names', async () => {
-    process.env.KETCH_WEBHOOK_AUTH_HEADER = 'X-Ketch-Token';
-    process.env.KETCH_WEBHOOK_AUTH_VALUE = 'secret-token';
+    process.env.KETCH_CALLBACK_AUTH_HEADER = 'X-Ketch-Token';
+    process.env.KETCH_CALLBACK_AUTH_VALUE = 'secret-token';
     delete process.env.KETCH_FORWARDER_AUTH;
     jest.resetModules();
     const app = require('../../src/app');

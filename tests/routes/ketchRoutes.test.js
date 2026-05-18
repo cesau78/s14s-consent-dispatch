@@ -1,7 +1,7 @@
 const request = require('supertest');
 
-const originalAuth = process.env.KETCH_WEBHOOK_AUTH_VALUE;
-process.env.KETCH_WEBHOOK_AUTH_VALUE = 'Bearer test-token';
+const originalAuth = process.env.KETCH_CALLBACK_AUTH_VALUE;
+process.env.KETCH_CALLBACK_AUTH_VALUE = 'Bearer test-token';
 delete process.env.KETCH_FORWARDER_AUTH;
 process.env.VIBES_COMPANY_KEY = 'company-1';
 process.env.VIBES_API_USERNAME = 'user';
@@ -19,7 +19,7 @@ describe('POST /ketch/webhook', () => {
   });
 
   afterAll(() => {
-    process.env.KETCH_WEBHOOK_AUTH_VALUE = originalAuth;
+    process.env.KETCH_CALLBACK_AUTH_VALUE = originalAuth;
   });
 
   test('rejects unauthorized requests', async () => {

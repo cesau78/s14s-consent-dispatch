@@ -1,12 +1,12 @@
 /**
- * Express application: health check, configurable Ketch webhook routes, and a
+ * Express application: health check, configurable Ketch callback routes, and a
  * shared error handler for callback-handlers and downstream API failures.
  */
 const express = require('express');
 const config = require('./config');
-const ketchWebhookIpAllowlist = require('./middleware/ketchWebhookIpAllowlist');
-const ketchWebhookAuth = require('./middleware/ketchWebhookAuth');
-const ketchWebhookHandler = require('./routes/ketchWebhookHandler');
+const ketchCallbackIpAllowlist = require('./middleware/ketchCallbackIpAllowlist');
+const ketchCallbackAuth = require('./middleware/ketchCallbackAuth');
+const ketchCallbackHandler = require('./routes/ketchCallbackHandler');
 
 const app = express();
 
@@ -17,9 +17,9 @@ app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok' });
 });
 
-// Each path from KETCH_WEBHOOK_PATHS is a separate Ketch Forwarder endpoint URL.
-for (const path of config.ketchWebhookPaths) {
-  app.post(path, ketchWebhookIpAllowlist, ketchWebhookAuth, ketchWebhookHandler);
+// Each path from KETCH_CALLBACK_PATHS is a separate Ketch Forwarder endpoint URL.
+for (const path of config.ketchCallbackPaths) {
+  app.post(path, ketchCallbackIpAllowlist, ketchCallbackAuth, ketchCallbackHandler);
 }
 
 // Callback-handlers attach error.status (and optional error.body from Vibes).
