@@ -52,7 +52,8 @@ describe('ketchCallbackAuth', () => {
       .post('/ketch/webhook')
       .set('Authorization', LOCAL_DEV_CALLBACK_AUTH_VALUE)
       .send({ kind: 'ConsentRequest', request: {} });
-    expect(authorized.status).toBe(204);
+    expect(authorized.status).toBe(200);
+    expect(authorized.body).toEqual({ downstream: [] });
   });
 
   test('rejects local-dev auth from a non-local TCP peer', async () => {
@@ -112,7 +113,8 @@ describe('ketchCallbackAuth', () => {
       .post('/ketch/webhook')
       .set('Authorization', 'Bearer configured')
       .send({ kind: 'ConsentRequest', request: {} });
-    expect(authorized.status).toBe(204);
+    expect(authorized.status).toBe(200);
+    expect(authorized.body).toEqual({ downstream: [] });
   });
 
   test('supports custom auth header names', async () => {
@@ -132,6 +134,7 @@ describe('ketchCallbackAuth', () => {
       .post('/ketch/webhook')
       .set('X-Ketch-Token', 'secret-token')
       .send({ kind: 'ConsentRequest', request: {} });
-    expect(authorized.status).toBe(204);
+    expect(authorized.status).toBe(200);
+    expect(authorized.body).toEqual({ downstream: [] });
   });
 });

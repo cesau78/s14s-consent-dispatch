@@ -1,0 +1,16 @@
+{
+  "request": {
+    "method": "PUT",
+    "urlPathPattern": "/api/v1/accounts/local-dev/recipients/[^/]+"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "recipientId": "mg-recipient-abc123",
+      "status": "updated"
+    }
+  }
+}

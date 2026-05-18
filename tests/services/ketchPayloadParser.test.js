@@ -1,11 +1,17 @@
 const {
   parsePhoneChangePayload,
+  parseEmailChangePayload,
   extractPhoneFromIdentities,
   extractPhoneFromContext,
   extractPhoneFromSubject,
+  extractEmailFromIdentities,
+  extractEmailFromContext,
+  extractEmailFromSubject,
   extractPersonKey,
   extractExternalPersonId,
-  getForwarderRequest,
+  extractExternalRecipientId,
+  extractRecipientId,
+  getEnvelopeSection,
   readContextValue
 } = require('../../src/services/ketchPayloadParser');
 
@@ -81,9 +87,135 @@ describe('ketchPayloadParser', () => {
     ).toBeNull();
   });
 
-  test('getForwarderRequest returns null when no envelope exists', () => {
-    expect(getForwarderRequest(null)).toBeNull();
-    expect(getForwarderRequest({ kind: 'CorrectionRequest' })).toBeNull();
+  test('getEnvelopeSection returns null when no envelope exists', () => {
+    expect(getEnvelopeSection(null)).toBeNull();
+    expect(getEnvelopeSection({ kind: 'CorrectionRequest' })).toBeNull();
+  });
+
+  test('extracts email and recipient id from correction request', () => {
+    const payload = parseEmailChangePayload({
+      request: {
+        identities: [
+          { identitySpace: 'recipient_id', identityValue: 'mg-recipient-abc123' },
+          { identitySpace: 'email', identityValue: 'Subscriber@Example.com' },
+          { identitySpace: 'account_id', identityValue: 'acct-9' }
+        ]
+      }
+    });
+
+    expect(payload).toEqual({
+      email: 'subscriber@example.com',
+      recipientId: 'mg-recipient-abc123',
+      externalRecipientId: 'acct-9'
+    });
+  });
+
+  test('reads email from status event subject form data', () => {
+    const payload = parseEmailChangePayload({
+      event: {
+        identities: [{ identitySpace: 'external_recipient_id', identityValue: 'crm-44' }],
+        subject: {
+          formData: {
+            email_address: 'form.subscriber@example.com'
+          }
+        }
+      }
+    });
+
+    expect(payload).toEqual({
+      email: 'form.subscriber@example.com',
+      recipientId: null,
+      externalRecipientId: 'crm-44'
+    });
+  });
+
+  test('returns null when no email is present', () => {
+    expect(
+      parseEmailChangePayload({
+        request: {
+          identities: [{ identitySpace: 'recipient_id', identityValue: 'mg-1' }]
+        }
+      })
+    ).toBeNull();
+  });
+
+  test('extractEmailFromSubject reads direct fields and nested form data', () => {
+    expect(extractEmailFromSubject(null)).toBeNull();
+    expect(extractEmailFromSubject({ email: 'Direct@Example.com' })).toBe('direct@example.com');
+    expect(
+      extractEmailFromSubject({
+        emailAddress: { toString: () => 'coerced@example.com' }
+      })
+    ).toBe('coerced@example.com');
+    expect(
+      extractEmailFromSubject({
+        formData: {
+          emailAddress: 'nested@example.com'
+        }
+      })
+    ).toBe('nested@example.com');
+    expect(extractEmailFromSubject({ phone: '+12145551234' })).toBeNull();
+  });
+
+  test('extractEmailFromContext coerces non-string values before normalization', () => {
+    expect(extractEmailFromContext({ email: null })).toBeNull();
+    expect(
+      extractEmailFromContext({
+        email_address: { toString: () => 'ctx@example.com' }
+      })
+    ).toBe('ctx@example.com');
+  });
+
+  test('extractRecipientId handles invalid inputs and identity spaces', () => {
+    expect(extractRecipientId(null)).toBeNull();
+    expect(
+      extractRecipientId([{ identitySpace: 'recipient_id', identityValue: 'mg-recipient-abc123' }])
+    ).toBe('mg-recipient-abc123');
+    expect(extractRecipientId([{ identitySpace: 'recipient_id', identityValue: '' }])).toBeNull();
+  });
+
+  test('extractExternalRecipientId handles invalid inputs and identity spaces', () => {
+    expect(extractExternalRecipientId(null)).toBeNull();
+    expect(
+      extractExternalRecipientId([
+        { identitySpace: 'external_recipient_id', identityValue: 'crm-44' }
+      ])
+    ).toBe('crm-44');
+    expect(
+      extractExternalRecipientId([{ identitySpace: 'external_recipient_id', identityValue: '' }])
+    ).toBeNull();
+  });
+
+  test('extractEmailFromIdentities handles invalid inputs and invalid emails', () => {
+    expect(extractEmailFromIdentities(null)).toBeNull();
+    expect(
+      extractEmailFromIdentities([
+        { identitySpace: 'email', identityValue: 'not-an-email' },
+        { identitySpace: 'email', identityValue: 'valid@example.com' }
+      ])
+    ).toBe('valid@example.com');
+  });
+
+  test('parseEmailChangePayload returns null without a forwarder envelope', () => {
+    expect(parseEmailChangePayload({ kind: 'CorrectionRequest' })).toBeNull();
+  });
+
+  test('extractEmailFromContext reads identity-space keys from entries', () => {
+    process.env.KETCH_EMAIL_CONTEXT_KEYS = 'unused_email_context';
+    process.env.KETCH_EMAIL_IDENTITY_SPACES = 'email_address';
+    jest.resetModules();
+    const { extractEmailFromContext: extractWithCustomConfig } = require('../../src/services/ketchPayloadParser');
+
+    expect(extractWithCustomConfig({ email_address: 'scan@example.com' })).toBe('scan@example.com');
+    expect(
+      extractWithCustomConfig({
+        email_address: { toString: () => 'object@example.com' }
+      })
+    ).toBe('object@example.com');
+    expect(extractWithCustomConfig({ unused_email_context: 'ctx@example.com' })).toBe(
+      'ctx@example.com'
+    );
+    expect(extractWithCustomConfig({ ignored: 'value' })).toBeNull();
   });
 
   test('extractPhoneFromIdentities handles invalid inputs and identity spaces', () => {

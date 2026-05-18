@@ -93,6 +93,34 @@ const config = {
   get ketchPhoneContextKeys() {
     return splitList(env('KETCH_PHONE_CONTEXT_KEYS', 'phone,mobilePhone,mobile_phone,mdn'));
   },
+  get ketchEmailIdentitySpaces() {
+    return splitList(env('KETCH_EMAIL_IDENTITY_SPACES', 'email,email_address'));
+  },
+  get ketchEmailContextKeys() {
+    return splitList(env('KETCH_EMAIL_CONTEXT_KEYS', 'email,emailAddress,email_address'));
+  },
+  get ketchMessageGearsRecipientIdIdentitySpaces() {
+    return splitList(
+      env('KETCH_MESSAGEGEARS_RECIPIENT_ID_IDENTITY_SPACES', 'messagegears_recipient_id,recipient_id')
+    );
+  },
+  get ketchMessageGearsExternalRecipientIdIdentitySpaces() {
+    return splitList(
+      env(
+        'KETCH_MESSAGEGEARS_EXTERNAL_RECIPIENT_ID_IDENTITY_SPACES',
+        'account_id,external_person_id,customer_id,external_recipient_id'
+      )
+    );
+  },
+  get messageGearsApiBaseUrl() {
+    return env('MESSAGEGEARS_API_BASE_URL', 'https://api.messagegears.com');
+  },
+  get messageGearsAccountId() {
+    return env('MESSAGEGEARS_ACCOUNT_ID');
+  },
+  get messageGearsApiKey() {
+    return env('MESSAGEGEARS_API_KEY');
+  },
   get vibesApiBaseUrl() {
     return env('VIBES_API_BASE_URL', 'https://public-api.vibescm.com');
   },

@@ -2,7 +2,10 @@
 
 **Marketing consent and identity dispatch service** — a thin, Docker-hostable HTTP service that receives [Ketch Forwarder](https://github.com/ketch-com/ketch-forwarder) callbacks and propagates changes to downstream engagement platforms.
 
-The first integration implemented is **phone number synchronization to Vibes** when a data subject correction (or related status event) includes an updated mobile number.
+The first integrations implemented are:
+
+- **Phone number synchronization to Vibes** when a correction includes an updated mobile number.
+- **Email address synchronization to MessageGears** when a correction includes an updated email and no phone change is present.
 
 Future work in this repo is expected to include consent preference dispatch (opt-in/opt-out, language) to Vibes and MessageGears.
 
@@ -18,6 +21,7 @@ Repository: [github.com/cesau78/s14s-consent-dispatch](https://github.com/cesau7
 - [Payload examples](#payload-examples)
 - [Phone Change Flow](#phone-change-flow)
 - [Vibes Integration](#vibes-integration)
+- [MessageGears Integration](#messagegears-integration)
 - [Configuration](#configuration)
 - [Local development testing](#local-development-testing)
 - [Docker](#docker)
@@ -32,8 +36,8 @@ Repository: [github.com/cesau78/s14s-consent-dispatch](https://github.com/cesau7
 Privacy and marketing systems often disagree on subscriber identity. Ketch acts as the consent and privacy layer; Vibes holds the mobile engagement database. This service sits between them:
 
 1. Ketch sends an outbound **webhook** (HTTP POST) to this service when a relevant event occurs.
-2. The service extracts the updated phone number and person identifiers from the payload.
-3. The service calls the Vibes Mobile Database API to update (or create/merge) the person record.
+2. The service extracts phone or email changes and downstream identifiers from the payload.
+3. Phone corrections call the Vibes Mobile Database API; email-only corrections call the MessageGears recipient API.
 
 The service is intentionally small: Express, no database, stateless except for outbound API calls. It is designed to run in Docker behind your edge load balancer or API gateway.
 
@@ -45,6 +49,7 @@ flowchart LR
 
   Ketch -->|"HTTPS POST /ketch/webhook"| Dispatch
   Dispatch -->|"HTTPS Person API"| Vibes
+  Dispatch -->|"HTTPS Recipient API"| MessageGears["MessageGears"]
 ```
 
 ---
@@ -99,9 +104,9 @@ Register a **Forwarder** endpoint in the Ketch UI (this is Ketch’s name for th
 
 | Kind | Behavior |
 |------|----------|
-| `CorrectionRequest` | Parses phone change, updates Vibes, returns `200` with `CorrectionResponse` (`status: completed`) |
-| `CorrectionStatusEvent` | Parses phone change, updates Vibes, returns `204 No Content` |
-| Other kinds (e.g. `ConsentRequest`) | Acknowledged with `204`; no Vibes call |
+| `CorrectionRequest` | Parses phone or email change, updates Vibes and/or MessageGears, returns `200` with `{ "downstream": [...] }` |
+| `CorrectionStatusEvent` | Same parsing and downstream updates as `CorrectionRequest`; returns `200` with `downstream` |
+| Other kinds (e.g. `ConsentRequest`) | Acknowledged with `200` and `{ "downstream": [] }`; no downstream call |
 
 Phone corrections align with Ketch’s [Correction](https://github.com/ketch-com/ketch-forwarder/blob/main/api/dsr/v1/Correction.md) DSR flow. Ensure Ketch identities and context variables are configured so this service can resolve a Vibes person (see [Phone Change Flow](#phone-change-flow)).
 
@@ -177,18 +182,17 @@ HTTP/1.1 200 OK
 Content-Type: application/json
 
 {
-  "apiVersion": "dsr/v1",
-  "kind": "CorrectionResponse",
-  "metadata": {
-    "uid": "22880925-aac5-42f9-a653-cb6921d361ff",
-    "tenant": "your-tenant"
-  },
-  "response": {
-    "status": "completed",
-    "resultMessage": "Phone number synchronized to Vibes"
-  }
+  "downstream": [
+    {
+      "system": "Vibes",
+      "update": 200,
+      "updated": "20260501T12:12:12.123"
+    }
+  ]
 }
 ```
+
+Each `downstream` entry reports the HTTP status from the downstream API (`update`) and a UTC timestamp (`updated`, compact `YYYYMMDDTHH:mm:ss.sss`). When nothing is updated, `downstream` is an empty array.
 
 ### Error responses
 
@@ -208,7 +212,7 @@ Sample JSON files for local testing live under [`examples/ketch/`](examples/ketc
 
 ### CorrectionRequest — phone in identities (updates Vibes)
 
-Ketch POSTs to your webhook; service responds `200` with `CorrectionResponse`.
+Ketch POSTs to your webhook; service responds `200` with a `downstream` array.
 
 **Request body:**
 
@@ -257,16 +261,13 @@ Ketch POSTs to your webhook; service responds `200` with `CorrectionResponse`.
 
 ```json
 {
-  "apiVersion": "dsr/v1",
-  "kind": "CorrectionResponse",
-  "metadata": {
-    "uid": "22880925-aac5-42f9-a653-cb6921d361ff",
-    "tenant": "your-tenant"
-  },
-  "response": {
-    "status": "completed",
-    "resultMessage": "Phone number synchronized to Vibes"
-  }
+  "downstream": [
+    {
+      "system": "Vibes",
+      "update": 200,
+      "updated": "20260501T12:12:12.123"
+    }
+  ]
 }
 ```
 
@@ -352,7 +353,7 @@ Common when the DSR form captures the new number in a custom field.
 
 ### CorrectionStatusEvent — phone in event envelope
 
-Status events use `event` instead of `request`. Service responds `204` with no body.
+Status events use `event` instead of `request`. Service responds `200` with the same `downstream` shape as `CorrectionRequest`.
 
 ```json
 {
@@ -400,7 +401,6 @@ Acknowledged without calling Vibes.
       }
     ],
     "subject": {
-      "email": "subscriber@example.com",
       "firstName": "Jamie",
       "lastName": "Example",
       "description": "Please correct my mailing address only"
@@ -409,13 +409,17 @@ Acknowledged without calling Vibes.
 }
 ```
 
-**Response:** `204 No Content`
+**Response:**
+
+```json
+{ "downstream": [] }
+```
 
 ---
 
 ### ConsentRequest — not handled for phone sync
 
-Acknowledged with `204`; no Vibes call. Included so you can verify routing and auth without triggering a phone update.
+Acknowledged with `200` and `{ "downstream": [] }`; no downstream call. Included so you can verify routing and auth without triggering an update.
 
 ```json
 {
@@ -449,20 +453,30 @@ Acknowledged with `204`; no Vibes call. Included so you can verify routing and a
 }
 ```
 
-**Response:** `204 No Content`
+**Response:**
+
+```json
+{ "downstream": [] }
+```
 
 ---
 
 Each file below lives in [`examples/ketch/`](examples/ketch/). See [Local development testing](#local-development-testing) for how to run them against a local stack.
 
-| File | Kind | What it exercises | HTTP | Vibes (mock or real) |
-|------|------|-------------------|------|----------------------|
-| [`correction-request-phone.json`](examples/ketch/correction-request-phone.json) | `CorrectionRequest` | Phone in **identities** (`phone` space) plus `person_key` and `account_id` | `200` + `CorrectionResponse` | `PUT .../persons/vibes-person-abc123` |
-| [`correction-request-context-phone.json`](examples/ketch/correction-request-context-phone.json) | `CorrectionRequest` | Phone in **context** (`mobilePhone`) with `person_key` | `200` + `CorrectionResponse` | `PUT .../persons/vibes-person-abc123` |
-| [`correction-request-formdata-phone.json`](examples/ketch/correction-request-formdata-phone.json) | `CorrectionRequest` | Phone in **subject.formData** (`mobile_phone`); only `external_person_id` identity | `200` + `CorrectionResponse` | `POST .../persons/` |
-| [`correction-status-event-phone.json`](examples/ketch/correction-status-event-phone.json) | `CorrectionStatusEvent` | Phone in **event** envelope (`mobile` identity) | `204` | `PUT .../persons/vibes-person-abc123` |
-| [`correction-request-no-phone.json`](examples/ketch/correction-request-no-phone.json) | `CorrectionRequest` | Correction with `person_key` but **no** phone field | `204` | None |
-| [`consent-request.json`](examples/ketch/consent-request.json) | `ConsentRequest` | Consent-only message (future work); routing and auth only | `204` | None |
+| File | Kind | What it exercises | HTTP | Downstream (mock or real) |
+|------|------|-------------------|------|---------------------------|
+| [`correction-request-phone.json`](examples/ketch/correction-request-phone.json) | `CorrectionRequest` | Phone in **identities** (`phone` space) plus `person_key` and `account_id` | `200` + `downstream: [Vibes]` | `PUT .../persons/vibes-person-abc123` |
+| [`correction-request-context-phone.json`](examples/ketch/correction-request-context-phone.json) | `CorrectionRequest` | Phone in **context** (`mobilePhone`) with `person_key` | `200` + `downstream: [Vibes]` | `PUT .../persons/vibes-person-abc123` |
+| [`correction-request-formdata-phone.json`](examples/ketch/correction-request-formdata-phone.json) | `CorrectionRequest` | Phone in **subject.formData** (`mobile_phone`); only `external_person_id` identity | `200` + `downstream: [Vibes]` | `POST .../persons/` |
+| [`correction-status-event-phone.json`](examples/ketch/correction-status-event-phone.json) | `CorrectionStatusEvent` | Phone in **event** envelope (`mobile` identity) | `200` + `downstream: [Vibes]` | `PUT .../persons/vibes-person-abc123` |
+| [`correction-request-no-phone.json`](examples/ketch/correction-request-no-phone.json) | `CorrectionRequest` | Correction with `person_key` but **no** phone or email field | `200` + `downstream: []` | None |
+| [`consent-request.json`](examples/ketch/consent-request.json) | `ConsentRequest` | Consent-only message (future work); routing and auth only | `200` + `downstream: []` | None |
+| [`correction-request-email.json`](examples/ketch/correction-request-email.json) | `CorrectionRequest` | Email in **identities** plus `recipient_id` | `200` + `downstream: [MessageGears]` | `PUT .../recipients/mg-recipient-abc123` |
+| [`correction-request-context-email.json`](examples/ketch/correction-request-context-email.json) | `CorrectionRequest` | Email in **context** (`emailAddress`) | `200` + `downstream: [MessageGears]` | `PUT` |
+| [`correction-request-formdata-email.json`](examples/ketch/correction-request-formdata-email.json) | `CorrectionRequest` | Email in **subject.formData**; external id only | `200` + `downstream: [MessageGears]` | `POST .../recipients/` |
+| [`correction-status-event-email.json`](examples/ketch/correction-status-event-email.json) | `CorrectionStatusEvent` | Email in **event** envelope | `200` + `downstream: [MessageGears]` | `PUT` |
+
+Phone takes precedence: if both phone and email are present, only Vibes is called.
 
 ---
 
@@ -503,7 +517,17 @@ curl -sS -X POST "http://localhost:3000/ketch/webhook" \
   --data-binary "@examples/ketch/correction-request-phone.json"
 ```
 
-WireMock stubs live under [`docker/wiremock/mappings/`](docker/wiremock/mappings/) (`PUT` and `POST` person endpoints for `local-dev`).
+WireMock stubs live under [`docker/wiremock/mappings/`](docker/wiremock/mappings/) — Vibes person `PUT`/`POST` and MessageGears recipient `PUT`/`POST` for account `local-dev` on the same port.
+
+**Smoke failures?** Rebuild **both** services so code and stubs stay in sync:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --force-recreate wiremock
+npm run smoke:local
+```
+
+Confirm WireMock loaded four stubs: `curl http://localhost:8080/__admin/mappings` → `"total": 4`. If phone cases return `CorrectionResponse` or status events return `204`, the dispatch container is still on an old image.
 
 ### Option B — Node on the host + WireMock
 
@@ -619,6 +643,27 @@ See Vibes [Data Syncing Guide](https://developer-platform.vibes.com/docs/data-sy
 
 ---
 
+## MessageGears Integration
+
+Email corrections use a configurable REST profile API (see `messageGearsClient.js`). WireMock stubs mirror the Vibes dev pattern on port **8080**.
+
+| Variable | Description |
+|----------|-------------|
+| `MESSAGEGEARS_API_BASE_URL` | Default: `https://api.messagegears.com` |
+| `MESSAGEGEARS_ACCOUNT_ID` | Your MessageGears account id |
+| `MESSAGEGEARS_API_KEY` | Bearer token for API calls |
+| `KETCH_EMAIL_IDENTITY_SPACES` | Identity spaces carrying email (default `email`, `email_address`) |
+| `KETCH_EMAIL_CONTEXT_KEYS` | Context / form keys for email (default `email`, `emailAddress`, `email_address`) |
+| `KETCH_MESSAGEGEARS_RECIPIENT_ID_IDENTITY_SPACES` | Recipient id (default `messagegears_recipient_id`, `recipient_id`) |
+| `KETCH_MESSAGEGEARS_EXTERNAL_RECIPIENT_ID_IDENTITY_SPACES` | External recipient id (default includes `account_id`, `external_recipient_id`, …) |
+
+**API paths (local WireMock):**
+
+- `PUT /api/v1/accounts/{accountId}/recipients/{recipientId}`
+- `POST /api/v1/accounts/{accountId}/recipients/`
+
+---
+
 ## Configuration
 
 Copy `.env.example` to `.env` and set values before running in production.
@@ -703,11 +748,16 @@ s14s-consent-dispatch/
 │   ├── routes/
 │   │   └── ketchCallbackHandler.js
 │   ├── callback-handlers/
-│   │   └── ketchPhoneCallbackHandler.js
+│   │   ├── ketchPhoneCallbackHandler.js
+│   │   └── ketchEmailCallbackHandler.js
 │   └── services/
 │       ├── clientIp.js
+│       ├── emailNormalizer.js
 │       ├── ipAllowlist.js
+│       ├── ketchCallbackDispatcher.js
+│       ├── ketchCorrectionUtils.js
 │       ├── ketchPayloadParser.js
+│       ├── messageGearsClient.js
 │       ├── phoneNormalizer.js
 │       └── vibesClient.js
 ├── examples/ketch/          # Sample Ketch webhook JSON bodies
@@ -728,7 +778,7 @@ s14s-consent-dispatch/
 
 1. **Vibes MDN updates** — Vibes does not allow changing an MDN on an existing person record in all cases; updates may return `409`. You may need a remove-then-add or merge workflow for true number changes. See [Update person by person_key](https://developer-platform.vibes.com/reference/put_update-person-by-person_key).
 
-2. **Scope** — Only phone sync via correction-related forwarder kinds is implemented. Consent preference and MessageGears dispatch are not yet built.
+2. **Scope** — Phone (Vibes) and email (MessageGears) sync via correction-related forwarder kinds are implemented. Consent preference dispatch is not yet built.
 
 3. **Idempotency** — Duplicate Ketch deliveries may result in duplicate Vibes API calls; add deduplication at the gateway or via `metadata.uid` if required.
 

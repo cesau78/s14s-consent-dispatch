@@ -22,7 +22,8 @@ describe('configured Ketch callback endpoints', () => {
       .post('/hooks/ketch-phone')
       .set('Authorization', 'Bearer test-token')
       .send({ kind: 'ConsentRequest', request: {} });
-    expect(configured.status).toBe(204);
+    expect(configured.status).toBe(200);
+    expect(configured.body).toEqual({ downstream: [] });
   });
 
   test('accepts legacy KETCH_WEBHOOK_PATHS env var', async () => {
@@ -38,6 +39,7 @@ describe('configured Ketch callback endpoints', () => {
       .post('/hooks/legacy-webhook')
       .set('Authorization', 'Bearer test-token')
       .send({ kind: 'ConsentRequest', request: {} });
-    expect(res.status).toBe(204);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ downstream: [] });
   });
 });

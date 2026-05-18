@@ -50,7 +50,10 @@ async function vibesRequest(url, options) {
     throw error;
   }
 
-  return body;
+  return {
+    status: response.status,
+    body
+  };
 }
 
 /**

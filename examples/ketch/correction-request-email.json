@@ -1,0 +1,37 @@
+{
+  "apiVersion": "dsr/v1",
+  "kind": "CorrectionRequest",
+  "metadata": {
+    "uid": "e5f6a7b8-c9d0-1234-ef01-234567890abc",
+    "tenant": "your-tenant"
+  },
+  "request": {
+    "property": "your-property",
+    "environment": "production",
+    "regulation": "ccpa",
+    "jurisdiction": "usca",
+    "identities": [
+      {
+        "identitySpace": "recipient_id",
+        "identityFormat": "raw",
+        "identityValue": "mg-recipient-abc123"
+      },
+      {
+        "identitySpace": "email",
+        "identityFormat": "raw",
+        "identityValue": "subscriber@example.com"
+      },
+      {
+        "identitySpace": "account_id",
+        "identityFormat": "raw",
+        "identityValue": "crm-customer-99"
+      }
+    ],
+    "subject": {
+      "firstName": "Jamie",
+      "lastName": "Example"
+    },
+    "submittedTimestamp": 1715900000,
+    "dueTimestamp": 1716500000
+  }
+}

@@ -6,16 +6,24 @@ delete process.env.KETCH_FORWARDER_AUTH;
 process.env.VIBES_COMPANY_KEY = 'company-1';
 process.env.VIBES_API_USERNAME = 'user';
 process.env.VIBES_API_PASSWORD = 'pass';
+process.env.MESSAGEGEARS_ACCOUNT_ID = 'account-1';
+process.env.MESSAGEGEARS_API_KEY = 'mg-key';
 
 const app = require('../../src/app');
 const vibesClient = require('../../src/services/vibesClient');
+const messageGearsClient = require('../../src/services/messageGearsClient');
 
 jest.mock('../../src/services/vibesClient');
+jest.mock('../../src/services/messageGearsClient');
 
 describe('POST /ketch/webhook', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    vibesClient.updatePersonPhone.mockResolvedValue({ person_key: 'person-123' });
+    vibesClient.updatePersonPhone.mockResolvedValue({ status: 200, body: { person_key: 'person-123' } });
+    messageGearsClient.updateRecipientEmail.mockResolvedValue({
+      status: 200,
+      body: { recipientId: 'mg-recipient-abc123' }
+    });
   });
 
   afterAll(() => {
@@ -30,7 +38,7 @@ describe('POST /ketch/webhook', () => {
     expect(res.status).toBe(401);
   });
 
-  test('accepts correction requests and returns a Ketch response', async () => {
+  test('accepts correction requests and returns downstream details', async () => {
     const res = await request(app)
       .post('/ketch/webhook')
       .set('Authorization', 'Bearer test-token')
@@ -47,7 +55,12 @@ describe('POST /ketch/webhook', () => {
       });
 
     expect(res.status).toBe(200);
-    expect(res.body.kind).toBe('CorrectionResponse');
+    expect(res.body.downstream).toEqual([
+      expect.objectContaining({
+        system: 'Vibes',
+        update: 200
+      })
+    ]);
     expect(vibesClient.updatePersonPhone).toHaveBeenCalledTimes(1);
   });
 
@@ -60,6 +73,7 @@ describe('POST /ketch/webhook', () => {
         request: {}
       });
 
-    expect(res.status).toBe(204);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ downstream: [] });
   });
 });

@@ -13,7 +13,6 @@
       }
     ],
     "subject": {
-      "email": "subscriber@example.com",
       "firstName": "Jamie",
       "lastName": "Example",
       "description": "Please correct my mailing address only"

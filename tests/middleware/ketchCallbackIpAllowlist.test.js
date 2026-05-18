@@ -36,6 +36,7 @@ describe('ketchCallbackIpAllowlist', () => {
       .set('X-Forwarded-For', '127.0.0.1')
       .send({ kind: 'ConsentRequest', request: {} });
 
-    expect(res.status).toBe(204);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ downstream: [] });
   });
 });

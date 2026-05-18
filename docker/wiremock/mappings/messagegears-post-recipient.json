@@ -1,0 +1,17 @@
+{
+  "request": {
+    "method": "POST",
+    "urlPath": "/api/v1/accounts/local-dev/recipients/"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "recipientId": "new-recipient-from-post",
+      "externalRecipientId": "crm-customer-44",
+      "status": "created"
+    }
+  }
+}

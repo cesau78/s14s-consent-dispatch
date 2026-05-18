@@ -1,0 +1,21 @@
+{
+  "apiVersion": "dsr/v1",
+  "kind": "CorrectionStatusEvent",
+  "metadata": {
+    "uid": "e5f6a7b8-c9d0-1234-ef01-234567890abc",
+    "tenant": "your-tenant"
+  },
+  "event": {
+    "status": "in_progress",
+    "identities": [
+      {
+        "identitySpace": "recipient_id",
+        "identityValue": "mg-recipient-abc123"
+      },
+      {
+        "identitySpace": "email",
+        "identityValue": "status.subscriber@example.com"
+      }
+    ]
+  }
+}

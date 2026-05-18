@@ -6,6 +6,7 @@ services:
       - .env.dev
     environment:
       VIBES_API_BASE_URL: http://wiremock:8080
+      MESSAGEGEARS_API_BASE_URL: http://wiremock:8080
     depends_on:
       wiremock:
         condition: service_started

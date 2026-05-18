@@ -4,9 +4,7 @@
  * Usage:
  *   npm start
  *   npm run smoke:local
- *
- *   npm run smoke:local
- *   npm run smoke:local:docker   (alias; same Bearer local-dev header)
+ *   npm run smoke:local:docker
  */
 const fs = require('fs');
 const path = require('path');
@@ -18,35 +16,97 @@ const auth = process.env.SMOKE_AUTH || LOCAL_DEV_CALLBACK_AUTH_VALUE;
 const cases = [
   {
     file: 'correction-request-phone.json',
-    expect: 200,
+    downstream: 'Vibes',
     note: 'CorrectionRequest — phone in identities; PUT to Vibes'
   },
   {
     file: 'correction-request-context-phone.json',
-    expect: 200,
+    downstream: 'Vibes',
     note: 'CorrectionRequest — phone in context; PUT to Vibes'
   },
   {
     file: 'correction-request-formdata-phone.json',
-    expect: 200,
+    downstream: 'Vibes',
     note: 'CorrectionRequest — phone in subject.formData; POST to Vibes'
   },
   {
     file: 'correction-status-event-phone.json',
-    expect: 204,
+    downstream: 'Vibes',
     note: 'CorrectionStatusEvent — phone in event envelope; PUT to Vibes'
   },
   {
     file: 'correction-request-no-phone.json',
-    expect: 204,
-    note: 'CorrectionRequest — no phone; no Vibes call'
+    downstream: null,
+    note: 'CorrectionRequest — no phone or email; empty downstream'
   },
   {
     file: 'consent-request.json',
-    expect: 204,
-    note: 'ConsentRequest — ignored for phone sync; no Vibes call'
+    downstream: null,
+    note: 'ConsentRequest — no downstream updates'
+  },
+  {
+    file: 'correction-request-email.json',
+    downstream: 'MessageGears',
+    note: 'CorrectionRequest — email in identities; PUT to MessageGears'
+  },
+  {
+    file: 'correction-request-context-email.json',
+    downstream: 'MessageGears',
+    note: 'CorrectionRequest — email in context; PUT to MessageGears'
+  },
+  {
+    file: 'correction-request-formdata-email.json',
+    downstream: 'MessageGears',
+    note: 'CorrectionRequest — email in subject.formData; POST to MessageGears'
+  },
+  {
+    file: 'correction-status-event-email.json',
+    downstream: 'MessageGears',
+    note: 'CorrectionStatusEvent — email in event envelope; PUT to MessageGears'
   }
 ];
+
+async function assertWireMockStubs() {
+  const wiremockUrl = (process.env.SMOKE_WIREMOCK_URL || 'http://localhost:8080').replace(
+    /\/$/,
+    ''
+  );
+  try {
+    const response = await fetch(`${wiremockUrl}/__admin/mappings`);
+    if (!response.ok) {
+      return;
+    }
+    const data = await response.json();
+    const count = data.meta && data.meta.total;
+    if (typeof count === 'number' && count < 4) {
+      console.warn(
+        `WireMock at ${wiremockUrl} has ${count} stub(s); expected 4 (Vibes + MessageGears). ` +
+          'Recreate WireMock after adding mappings:\n' +
+          '  docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --force-recreate wiremock\n'
+      );
+    }
+  } catch {
+    // WireMock not running (e.g. host-only Node); skip.
+  }
+}
+
+function validateDownstream(body, expectedSystem) {
+  if (!body || !Array.isArray(body.downstream)) {
+    return false;
+  }
+
+  if (!expectedSystem) {
+    return body.downstream.length === 0;
+  }
+
+  return body.downstream.some(
+    (entry) =>
+      entry.system === expectedSystem &&
+      entry.update === 200 &&
+      typeof entry.updated === 'string' &&
+      /^\d{8}T\d{2}:\d{2}:\d{2}\.\d{3}$/.test(entry.updated)
+  );
+}
 
 async function postExample(testCase) {
   const filePath = path.join(__dirname, '..', 'examples', 'ketch', testCase.file);
@@ -62,16 +122,29 @@ async function postExample(testCase) {
     body
   });
 
-  const ok = response.status === testCase.expect;
+  const responseText = await response.text();
+  let responseBody = null;
+  if (responseText) {
+    try {
+      responseBody = JSON.parse(responseText);
+    } catch {
+      responseBody = responseText;
+    }
+  }
+
+  const statusOk = response.status === 200;
+  const bodyOk = validateDownstream(responseBody, testCase.downstream);
+  const ok = statusOk && bodyOk;
   const prefix = ok ? 'OK' : 'FAIL';
-  console.log(
-    `${prefix}  ${testCase.file}  →  ${response.status} (expected ${testCase.expect})`
-  );
+
+  console.log(`${prefix}  ${testCase.file}  →  ${response.status} (expected 200)`);
   console.log(`      ${testCase.note}`);
   if (!ok) {
-    const text = await response.text();
-    if (text) {
-      console.log(`      body: ${text.slice(0, 200)}`);
+    console.log(`      body: ${JSON.stringify(responseBody).slice(0, 240)}`);
+    if (responseBody && responseBody.kind === 'CorrectionResponse') {
+      console.log(
+        '      hint: dispatch is running old code — rebuild: npm run dev:compose (or restart npm start)'
+      );
     }
     process.exitCode = 1;
   }
@@ -79,6 +152,7 @@ async function postExample(testCase) {
 
 async function main() {
   console.log(`Smoke testing ${baseUrl}/ketch/webhook\n`);
+  await assertWireMockStubs();
   for (const testCase of cases) {
     await postExample(testCase);
   }

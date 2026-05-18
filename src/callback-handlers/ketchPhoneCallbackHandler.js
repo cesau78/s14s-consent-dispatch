@@ -1,58 +1,17 @@
 /**
  * Ketch Forwarder callback-handler: phone number corrections → Vibes Mobile DB.
- *
- * Handles CorrectionRequest (returns a CorrectionResponse) and
- * CorrectionStatusEvent (returns 204). Other message kinds are acknowledged
- * without calling Vibes.
  */
+const {
+  buildDownstreamEntry,
+  buildDispatchResponse
+} = require('../services/callbackResponse');
 const { parsePhoneChangePayload } = require('../services/ketchPayloadParser');
 const vibesClient = require('../services/vibesClient');
 
-const PHONE_CHANGE_KINDS = new Set([
-  'CorrectionRequest',
-  'CorrectionStatusEvent'
-]);
-
-/** Ketch uses `request` for inbound messages and `event` for status updates. */
-function getEnvelopeSection(body) {
-  if (body && typeof body.request === 'object') {
-    return body.request;
-  }
-  if (body && typeof body.event === 'object') {
-    return body.event;
-  }
-  return null;
-}
-
-/** Required by the Ketch Forwarder Correction flow (dsr/v1). */
-function buildCorrectionResponse(metadata) {
-  return {
-    apiVersion: 'dsr/v1',
-    kind: 'CorrectionResponse',
-    metadata: metadata || {},
-    response: {
-      status: 'completed',
-      resultMessage: 'Phone number synchronized to Vibes'
-    }
-  };
-}
-
-async function handleKetchPhoneCallback(body) {
-  const kind = body && body.kind;
-  if (!kind) {
-    const error = new Error('Missing Ketch message kind');
-    error.status = 400;
-    throw error;
-  }
-
-  if (!PHONE_CHANGE_KINDS.has(kind)) {
-    return { status: 204, body: null };
-  }
-
+async function processPhoneCorrection(body) {
   const phoneChange = parsePhoneChangePayload(body);
   if (!phoneChange) {
-    // Correction without a phone field — nothing to sync.
-    return { status: 204, body: null };
+    return null;
   }
 
   if (!phoneChange.personKey && !phoneChange.externalPersonId) {
@@ -63,21 +22,13 @@ async function handleKetchPhoneCallback(body) {
     throw error;
   }
 
-  await vibesClient.updatePersonPhone(phoneChange);
+  const downstreamResult = await vibesClient.updatePersonPhone(phoneChange);
 
-  if (kind === 'CorrectionRequest') {
-    return {
-      status: 200,
-      body: buildCorrectionResponse(body.metadata)
-    };
-  }
-
-  return { status: 204, body: null };
+  return buildDispatchResponse([
+    buildDownstreamEntry('Vibes', downstreamResult.status)
+  ]);
 }
 
 module.exports = {
-  handleKetchPhoneCallback,
-  buildCorrectionResponse,
-  getEnvelopeSection,
-  PHONE_CHANGE_KINDS
+  processPhoneCorrection
 };

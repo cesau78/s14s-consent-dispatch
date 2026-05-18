@@ -17,6 +17,7 @@ describe('vibesClient.updatePersonPhone', () => {
   test('PUTs phone updates when person key is provided', async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
+      status: 200,
       text: async () => JSON.stringify({ person_key: 'person-123' })
     });
 
@@ -25,7 +26,8 @@ describe('vibesClient.updatePersonPhone', () => {
       phone: '+12145551234'
     });
 
-    expect(result.person_key).toBe('person-123');
+    expect(result.status).toBe(200);
+    expect(result.body.person_key).toBe('person-123');
     expect(global.fetch).toHaveBeenCalledWith(
       'https://public-api.vibescm.com/companies/company-1/mobiledb/persons/person-123',
       expect.objectContaining({
@@ -93,6 +95,7 @@ describe('vibesClient.updatePersonPhone', () => {
   test('returns an empty body when Vibes responds with no content', async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
+      status: 200,
       text: async () => ''
     });
 
@@ -101,7 +104,8 @@ describe('vibesClient.updatePersonPhone', () => {
       phone: '+12145551234'
     });
 
-    expect(result).toBeNull();
+    expect(result.status).toBe(200);
+    expect(result.body).toBeNull();
   });
 
   test('returns plain-text Vibes error bodies when JSON parsing fails', async () => {
