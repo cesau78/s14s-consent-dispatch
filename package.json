@@ -11,6 +11,8 @@
     "dev:compose": "docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build",
     "smoke:local": "node scripts/smoke-local.js",
     "smoke:local:docker": "node scripts/smoke-local.js",
+    "smoke:consent": "node scripts/smoke-local.js --consent",
+    "smoke:vibes": "node scripts/smoke-local.js --vibes",
     "prepare": "husky"
   },
   "license": "ISC",

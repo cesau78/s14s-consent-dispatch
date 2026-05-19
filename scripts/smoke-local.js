@@ -12,6 +12,41 @@ const { LOCAL_DEV_CALLBACK_AUTH_VALUE } = require('../src/config');
 
 const baseUrl = (process.env.SMOKE_BASE_URL || 'http://localhost:3000').replace(/\/$/, '');
 const auth = process.env.SMOKE_AUTH || LOCAL_DEV_CALLBACK_AUTH_VALUE;
+/** Matches KETCH_ALLOWED_IPS / VIBES_ALLOWED_IPS in .env.dev when TRUST_PROXY=true. */
+const smokeClientIp = process.env.SMOKE_CLIENT_IP || '127.0.0.1';
+
+const consentCases = [
+  {
+    file: 'consent-request.json',
+    downstream: null,
+    note: 'ConsentRequest — sms still granted; no downstream updates'
+  },
+  {
+    file: 'consent-request-sms-denied.json',
+    downstream: 'Vibes',
+    note: 'ConsentRequest — sms denied; Vibes unsubscribe',
+    acceptStatuses: [200, 204]
+  },
+  {
+    file: 'consent-request-email-denied.json',
+    downstream: 'MessageGears',
+    note: 'ConsentRequest — email denied; MessageGears opt-out'
+  },
+  {
+    file: 'consent-request-vibes-origin.json',
+    downstream: null,
+    note: 'ConsentRequest — Vibes origin loop guard; empty downstream'
+  }
+];
+
+const vibesCases = [
+  {
+    file: 'sms-opt-out-no.json',
+    downstream: 'Ketch',
+    acceptStatuses: [200, 204],
+    note: 'Vibes MO "no" — Ketch consent update'
+  }
+];
 
 const cases = [
   {
@@ -38,27 +73,6 @@ const cases = [
     file: 'correction-request-no-phone.json',
     downstream: null,
     note: 'CorrectionRequest — no phone or email; empty downstream'
-  },
-  {
-    file: 'consent-request.json',
-    downstream: null,
-    note: 'ConsentRequest — sms still granted; no downstream updates'
-  },
-  {
-    file: 'consent-request-sms-denied.json',
-    downstream: 'Vibes',
-    note: 'ConsentRequest — sms denied; Vibes unsubscribe',
-    acceptStatuses: [200, 204]
-  },
-  {
-    file: 'consent-request-email-denied.json',
-    downstream: 'MessageGears',
-    note: 'ConsentRequest — email denied; MessageGears opt-out'
-  },
-  {
-    file: 'consent-request-vibes-origin.json',
-    downstream: null,
-    note: 'ConsentRequest — Vibes origin loop guard; empty downstream'
   },
   {
     file: 'correction-request-email.json',
@@ -127,7 +141,10 @@ function validateDownstream(body, expectedSystem, acceptStatuses = [200]) {
 async function postExample(testCase) {
   const filePath = path.join(__dirname, '..', 'examples', 'ketch', testCase.file);
   const body = fs.readFileSync(filePath, 'utf8');
-  const headers = { 'Content-Type': 'application/json' };
+  const headers = {
+    'Content-Type': 'application/json',
+    'X-Forwarded-For': smokeClientIp
+  };
   if (auth) {
     headers.Authorization = auth;
   }
@@ -173,7 +190,10 @@ async function postExample(testCase) {
 async function postVibesExample(testCase) {
   const filePath = path.join(__dirname, '..', 'examples', 'vibes', testCase.file);
   const body = fs.readFileSync(filePath, 'utf8');
-  const headers = { 'Content-Type': 'application/json' };
+  const headers = {
+    'Content-Type': 'application/json',
+    'X-Forwarded-For': smokeClientIp
+  };
   if (auth) {
     headers.Authorization = auth;
   }
@@ -209,19 +229,33 @@ async function postVibesExample(testCase) {
 }
 
 async function main() {
-  console.log(`Smoke testing ${baseUrl}/ketch/webhook\n`);
+  const args = new Set(process.argv.slice(2));
+  const runConsent = args.has('--consent') || args.size === 0;
+  const runVibes = args.has('--vibes') || args.size === 0;
+  const runCorrections = !args.has('--consent') && !args.has('--vibes');
+
   await assertWireMockStubs();
-  for (const testCase of cases) {
-    await postExample(testCase);
+
+  if (runConsent) {
+    console.log(`Smoke testing consent payloads → ${baseUrl}/ketch/webhook\n`);
+    for (const testCase of consentCases) {
+      await postExample(testCase);
+    }
   }
 
-  console.log(`\nSmoke testing ${baseUrl}/vibes/webhook\n`);
-  await postVibesExample({
-    file: 'sms-opt-out-no.json',
-    downstream: 'Ketch',
-    acceptStatuses: [200, 204],
-    note: 'Vibes MO "no" — Ketch consent update'
-  });
+  if (runVibes) {
+    console.log(`\nSmoke testing Vibes payloads → ${baseUrl}/vibes/webhook\n`);
+    for (const testCase of vibesCases) {
+      await postVibesExample(testCase);
+    }
+  }
+
+  if (runCorrections) {
+    console.log(`\nSmoke testing correction payloads → ${baseUrl}/ketch/webhook\n`);
+    for (const testCase of cases) {
+      await postExample(testCase);
+    }
+  }
   if (process.exitCode) {
     console.log('\nOne or more examples failed.');
   } else {

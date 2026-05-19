@@ -17,11 +17,11 @@
       }
     ],
     "purposes": {
-      "email_mktg": "denied",
+      "email_mktg": "granted",
       "sms_mktg": "granted"
     },
     "legalBasis": {
-      "email_mktg": "consent_optout",
+      "email_mktg": "consent_optin",
       "sms_mktg": "consent_optin"
     },
     "collectedAt": 1715900000
