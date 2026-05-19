@@ -1,5 +1,6 @@
 const {
   CORRECTION_KINDS,
+  CONSENT_KINDS,
   getEnvelopeSection
 } = require('../../src/services/ketchCorrectionUtils');
 
@@ -14,5 +15,6 @@ describe('ketchCorrectionUtils', () => {
     expect(CORRECTION_KINDS.has('CorrectionRequest')).toBe(true);
     expect(CORRECTION_KINDS.has('CorrectionStatusEvent')).toBe(true);
     expect(CORRECTION_KINDS.has('ConsentRequest')).toBe(false);
+    expect(CONSENT_KINDS.has('ConsentRequest')).toBe(true);
   });
 });

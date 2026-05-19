@@ -49,4 +49,26 @@ describe('config', () => {
     jest.resetModules();
     expect(require('../src/config').port).toBe(3000);
   });
+
+  test('reads vibes and ketch consent settings from the environment', () => {
+    process.env.VIBES_CALLBACK_PATH = '/hooks/vibes';
+    process.env.VIBES_CALLBACK_AUTH_VALUE = ' Bearer vibes ';
+    process.env.VIBES_SMS_OPT_OUT_KEYWORDS = 'no,stop';
+    process.env.KETCH_API_BASE_URL = 'https://ketch.example/v2';
+    process.env.KETCH_SMS_MARKETING_PURPOSE_CODES = 'sms_mktg,custom_sms';
+    jest.resetModules();
+    const config = require('../src/config');
+
+    expect(config.vibesCallbackPath).toBe('/hooks/vibes');
+    expect(config.vibesCallbackAuthValue).toBe('Bearer vibes');
+    expect(config.vibesSmsOptOutKeywords).toEqual(['no', 'stop']);
+    expect(config.ketchApiBaseUrl).toBe('https://ketch.example/v2');
+    expect(config.ketchSmsMarketingPurposeCodes).toEqual(['sms_mktg', 'custom_sms']);
+  });
+
+  test('treats blank vibes callback auth as unset', () => {
+    process.env.VIBES_CALLBACK_AUTH_VALUE = '  ';
+    jest.resetModules();
+    expect(require('../src/config').vibesCallbackAuthValue).toBeUndefined();
+  });
 });

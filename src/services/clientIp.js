@@ -1,13 +1,13 @@
 /**
- * Resolve the caller IP for callback allowlisting, including behind a reverse proxy.
+ * Resolve client IP for callback allowlisting (honors X-Forwarded-For when trust proxy is set).
  */
 
+/** normalizeIp — strip ::ffff: prefix from IPv4-mapped addresses. */
 function normalizeIp(ip) {
   if (!ip) {
     return '';
   }
 
-  // Express often reports IPv4 clients as ::ffff:x.x.x.x
   if (ip.startsWith('::ffff:')) {
     return ip.slice(7);
   }
@@ -15,17 +15,17 @@ function normalizeIp(ip) {
   return ip;
 }
 
+/** getClientIp — first X-Forwarded-For hop, else req.ip / socket (for allowlists). */
 function getClientIp(req) {
   const forwarded = req.get('x-forwarded-for');
   if (forwarded) {
-    // First address is the original client when proxies append to the chain.
     return normalizeIp(forwarded.split(',')[0].trim());
   }
 
   return normalizeIp(req.ip || req.socket?.remoteAddress || '');
 }
 
-/** TCP peer only — ignores X-Forwarded-For (cannot be spoofed by the HTTP client). */
+/** getDirectClientIp — TCP peer only; used for local-dev auth (not spoofable via headers). */
 function getDirectClientIp(req) {
   return normalizeIp(req.socket?.remoteAddress || req.ip || '');
 }
@@ -35,10 +35,7 @@ function isLocalhost(clientIp) {
   return normalized === '127.0.0.1' || normalized === '::1';
 }
 
-/**
- * True when the direct TCP peer is loopback or a Docker/host bridge address
- * (host → published container port). Not used for production callback auth.
- */
+/** isLocalMachinePeer — loopback or RFC1918 (Docker / host bridge). */
 function isLocalMachinePeer(clientIp) {
   const normalized = normalizeIp(clientIp);
   if (isLocalhost(normalized)) {
@@ -64,6 +61,7 @@ function isLocalMachinePeer(clientIp) {
   return false;
 }
 
+/** isLocalDevCaller — direct peer must be local when using Bearer local-dev auth value. */
 function isLocalDevCaller(req) {
   return isLocalMachinePeer(getDirectClientIp(req));
 }

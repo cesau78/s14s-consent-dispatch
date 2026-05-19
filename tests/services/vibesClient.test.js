@@ -133,4 +133,70 @@ describe('vibesClient.updatePersonPhone', () => {
       })
     ).rejects.toThrow('VIBES_COMPANY_KEY is required');
   });
+
+  test('unsubscribePersonFromList deletes subscription', async () => {
+    process.env.VIBES_SMS_SUBSCRIPTION_LIST_ID = 'sms-list-1';
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 204,
+      text: async () => ''
+    });
+
+    const result = await vibesClient.unsubscribePersonFromList('person-123');
+
+    expect(result.status).toBe(204);
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/subscriptions/sms-list-1'),
+      expect.objectContaining({ method: 'DELETE' })
+    );
+  });
+
+  test('unsubscribePersonFromList validates required settings', async () => {
+    process.env.VIBES_COMPANY_KEY = '';
+    await expect(vibesClient.unsubscribePersonFromList('person-123')).rejects.toThrow(
+      'VIBES_COMPANY_KEY is required'
+    );
+
+    process.env.VIBES_COMPANY_KEY = 'company-1';
+    process.env.VIBES_API_USERNAME = '';
+    await expect(vibesClient.unsubscribePersonFromList('person-123')).rejects.toThrow(
+      'VIBES_API_USERNAME and VIBES_API_PASSWORD are required'
+    );
+
+    process.env.VIBES_API_USERNAME = 'user';
+    await expect(vibesClient.unsubscribePersonFromList('')).rejects.toThrow(
+      'personKey is required'
+    );
+
+    process.env.VIBES_SMS_SUBSCRIPTION_LIST_ID = '';
+    await expect(vibesClient.unsubscribePersonFromList('person-123')).rejects.toThrow(
+      'VIBES_SMS_SUBSCRIPTION_LIST_ID is required'
+    );
+  });
+
+  test('unsubscribePersonFromList propagates non-404 errors', async () => {
+    process.env.VIBES_SMS_SUBSCRIPTION_LIST_ID = 'sms-list-1';
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+      text: async () => '{"error":"fail"}'
+    });
+
+    await expect(vibesClient.unsubscribePersonFromList('person-123')).rejects.toMatchObject({
+      status: 500
+    });
+  });
+
+  test('unsubscribePersonFromList treats 404 as success', async () => {
+    process.env.VIBES_SMS_SUBSCRIPTION_LIST_ID = 'sms-list-1';
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 404,
+      text: async () => '{"error":"not subscribed"}'
+    });
+
+    const result = await vibesClient.unsubscribePersonFromList('person-123');
+
+    expect(result.status).toBe(204);
+  });
 });

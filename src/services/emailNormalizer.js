@@ -1,6 +1,8 @@
 /**
- * Normalize email addresses for MessageGears profile updates.
+ * Email normalization for MessageGears recipient profiles.
  */
+
+/** normalizeEmail — trim, lowercase, basic format check; null if invalid. */
 function normalizeEmail(rawEmail) {
   if (rawEmail == null) {
     return null;

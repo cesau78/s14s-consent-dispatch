@@ -133,3 +133,92 @@ describe('messageGearsClient.updateRecipientEmail', () => {
     ).rejects.toThrow('MESSAGEGEARS_ACCOUNT_ID is required');
   });
 });
+
+describe('messageGearsClient.optOutRecipient', () => {
+  const originalFetch = global.fetch;
+
+  beforeEach(() => {
+    process.env.MESSAGEGEARS_ACCOUNT_ID = 'account-1';
+    process.env.MESSAGEGEARS_API_KEY = 'mg-api-key';
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  test('PUTs opt-out payload when recipient id is provided', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ recipientId: 'mg-recipient-abc123' })
+    });
+
+    const result = await messageGearsClient.optOutRecipient({
+      recipientId: 'mg-recipient-abc123'
+    });
+
+    expect(result.status).toBe(200);
+    const [, options] = global.fetch.mock.calls[0];
+    expect(options.method).toBe('PUT');
+    expect(JSON.parse(options.body)).toEqual({ emailOptIn: false });
+  });
+
+  test('POSTs opt-out when only external recipient id is provided', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ recipientId: 'new-recipient' })
+    });
+
+    await messageGearsClient.optOutRecipient({
+      externalRecipientId: 'crm-9'
+    });
+
+    const [, options] = global.fetch.mock.calls[0];
+    expect(options.method).toBe('POST');
+    expect(JSON.parse(options.body)).toEqual({
+      emailOptIn: false,
+      externalRecipientId: 'crm-9'
+    });
+  });
+
+  test('uses custom opt-out payload from env JSON', async () => {
+    process.env.MESSAGEGEARS_OPT_OUT_PAYLOAD_JSON = '{"suppressed":true}';
+    jest.resetModules();
+    const client = require('../../src/services/messageGearsClient');
+
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => ''
+    });
+
+    await client.optOutRecipient({ recipientId: 'mg-recipient-abc123' });
+
+    const [, options] = global.fetch.mock.calls[0];
+    expect(JSON.parse(options.body)).toEqual({ suppressed: true });
+  });
+
+  test('throws when neither recipient id nor external recipient id is provided', async () => {
+    await expect(messageGearsClient.optOutRecipient({})).rejects.toThrow(
+      'recipientId or externalRecipientId is required to opt out in MessageGears'
+    );
+  });
+
+  test('throws when MessageGears credentials are missing for opt-out', async () => {
+    process.env.MESSAGEGEARS_API_KEY = '';
+
+    await expect(
+      messageGearsClient.optOutRecipient({ recipientId: 'mg-recipient-abc123' })
+    ).rejects.toThrow('MESSAGEGEARS_API_KEY is required');
+  });
+
+  test('throws when MessageGears account id is missing for opt-out', async () => {
+    process.env.MESSAGEGEARS_ACCOUNT_ID = '';
+
+    await expect(
+      messageGearsClient.optOutRecipient({ recipientId: 'mg-recipient-abc123' })
+    ).rejects.toThrow('MESSAGEGEARS_ACCOUNT_ID is required');
+  });
+});
+

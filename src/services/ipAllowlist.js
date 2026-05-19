@@ -1,6 +1,6 @@
 /**
- * IP allowlist for inbound Ketch callbacks. Supports single hosts and CIDR ranges.
- * An empty allowlist means all IPs are permitted.
+ * IP allowlist for inbound callbacks (KETCH_ALLOWED_IPS, VIBES_ALLOWED_IPS).
+ * Empty or unset list = deny all callers.
  */
 const { BlockList } = require('net');
 const { normalizeIp } = require('./clientIp');
@@ -12,6 +12,7 @@ function parseIpFamily(ip) {
   return 'ipv4';
 }
 
+/** addAllowedEntry — single host or CIDR into a Node BlockList. */
 function addAllowedEntry(blockList, entry) {
   const trimmed = entry.trim();
   if (!trimmed) {
@@ -39,9 +40,13 @@ function createAllowlist(entries) {
   return blockList;
 }
 
+/**
+ * isIpAllowed — check one IP against configured entries.
+ * Sequence: empty list → false; else normalize IP → BlockList.check
+ */
 function isIpAllowed(clientIp, allowedEntries) {
   if (!allowedEntries.length) {
-    return true;
+    return false;
   }
 
   const normalized = normalizeIp(clientIp);

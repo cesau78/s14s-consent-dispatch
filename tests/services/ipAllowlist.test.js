@@ -2,8 +2,9 @@ const { isIpAllowed, addAllowedEntry } = require('../../src/services/ipAllowlist
 const { BlockList } = require('net');
 
 describe('isIpAllowed', () => {
-  test('allows any IP when the allowlist is empty', () => {
-    expect(isIpAllowed('203.0.113.4', [])).toBe(true);
+  test('denies all IPs when the allowlist is empty', () => {
+    expect(isIpAllowed('203.0.113.4', [])).toBe(false);
+    expect(isIpAllowed('127.0.0.1', [])).toBe(false);
   });
 
   test('matches exact IPv4 addresses', () => {

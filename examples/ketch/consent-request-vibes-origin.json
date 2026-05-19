@@ -1,0 +1,30 @@
+{
+  "apiVersion": "consent/v1",
+  "kind": "ConsentRequest",
+  "metadata": {
+    "uid": "f6a7b8c9-d0e1-2345-f012-456789012345",
+    "tenant": "your-tenant"
+  },
+  "request": {
+    "property": "your-property",
+    "environment": "production",
+    "regulation": "ccpa",
+    "jurisdiction": "usca",
+    "identities": [
+      {
+        "identitySpace": "person_key",
+        "identityValue": "vibes-person-abc123"
+      }
+    ],
+    "purposes": {
+      "sms_mktg": "denied"
+    },
+    "legalBasis": {
+      "sms_mktg": "consent_optout"
+    },
+    "context": {
+      "consent_dispatch_origin": "vibes_sms_optout"
+    },
+    "collectedAt": 1715900001
+  }
+}

@@ -9,12 +9,14 @@ const { normalizePhoneToE164 } = require('./phoneNormalizer');
 const { normalizeEmail } = require('./emailNormalizer');
 const { getEnvelopeSection } = require('./ketchCorrectionUtils');
 
+/** matchesSpace — identitySpace in allowed list (case-insensitive). */
 function matchesSpace(identitySpace, allowedSpaces) {
   return allowedSpaces.some(
     (space) => space.toLowerCase() === String(identitySpace || '').toLowerCase()
   );
 }
 
+/** matchesPhoneKey — context key matches phone identity or context env keys. */
 function matchesPhoneKey(key) {
   return (
     matchesSpace(key, config.ketchPhoneContextKeys) ||
@@ -22,6 +24,7 @@ function matchesPhoneKey(key) {
   );
 }
 
+/** matchesEmailKey — context key matches email identity or context env keys. */
 function matchesEmailKey(key) {
   return (
     matchesSpace(key, config.ketchEmailContextKeys) ||
@@ -29,7 +32,7 @@ function matchesEmailKey(key) {
   );
 }
 
-/** Case-insensitive lookup for context / formData keys. */
+/** readContextValue — case-insensitive lookup in context / formData. */
 function readContextValue(context, key) {
   if (!context || typeof context !== 'object') {
     return null;
@@ -45,6 +48,7 @@ function readContextValue(context, key) {
   return match ? context[match] : null;
 }
 
+/** extractPhoneFromIdentities — first valid E.164 from phone identity spaces. */
 function extractPhoneFromIdentities(identities) {
   if (!Array.isArray(identities)) {
     return null;
@@ -63,6 +67,7 @@ function extractPhoneFromIdentities(identities) {
   return null;
 }
 
+/** extractPersonKey — Vibes person_key identity space. */
 function extractPersonKey(identities) {
   if (!Array.isArray(identities)) {
     return null;
@@ -80,6 +85,7 @@ function extractPersonKey(identities) {
   return null;
 }
 
+/** extractExternalPersonId — Vibes external_person_id identity space. */
 function extractExternalPersonId(identities) {
   if (!Array.isArray(identities)) {
     return null;
@@ -97,6 +103,7 @@ function extractExternalPersonId(identities) {
   return null;
 }
 
+/** extractPhoneFromContext — configured keys, then scan keys matching phone spaces. */
 function extractPhoneFromContext(context) {
   if (!context || typeof context !== 'object') {
     return null;
@@ -128,6 +135,7 @@ function extractPhoneFromContext(context) {
   return null;
 }
 
+/** extractPhoneFromSubject — subject.phone fields, else subject.formData. */
 function extractPhoneFromSubject(subject) {
   if (!subject || typeof subject !== 'object') {
     return null;
@@ -155,6 +163,7 @@ function extractPhoneFromSubject(subject) {
   return null;
 }
 
+/** extractRecipientId — MessageGears recipient_id identity space. */
 function extractRecipientId(identities) {
   if (!Array.isArray(identities)) {
     return null;
@@ -172,6 +181,7 @@ function extractRecipientId(identities) {
   return null;
 }
 
+/** extractExternalRecipientId — MessageGears external recipient identity space. */
 function extractExternalRecipientId(identities) {
   if (!Array.isArray(identities)) {
     return null;
@@ -191,6 +201,7 @@ function extractExternalRecipientId(identities) {
   return null;
 }
 
+/** extractEmailFromIdentities — first normalized email from email identity spaces. */
 function extractEmailFromIdentities(identities) {
   if (!Array.isArray(identities)) {
     return null;
@@ -209,6 +220,7 @@ function extractEmailFromIdentities(identities) {
   return null;
 }
 
+/** extractEmailFromContext — configured keys, then scan keys matching email spaces. */
 function extractEmailFromContext(context) {
   if (!context || typeof context !== 'object') {
     return null;
@@ -239,6 +251,7 @@ function extractEmailFromContext(context) {
   return null;
 }
 
+/** extractEmailFromSubject — subject.email fields, else subject.formData. */
 function extractEmailFromSubject(subject) {
   if (!subject || typeof subject !== 'object') {
     return null;
@@ -262,6 +275,15 @@ function extractEmailFromSubject(subject) {
   return null;
 }
 
+/**
+ * parsePhoneChangePayload — Ketch correction → Vibes person update input.
+ *
+ * Sequence:
+ *   1. getEnvelopeSection — no request/event → null
+ *   2. Phone: identities → context → subject (first E.164 wins)
+ *   3. No phone → null
+ *   4. Attach personKey + externalPersonId from identities
+ */
 function parsePhoneChangePayload(body) {
   const request = getEnvelopeSection(body);
   if (!request) {
@@ -284,6 +306,15 @@ function parsePhoneChangePayload(body) {
   };
 }
 
+/**
+ * parseEmailChangePayload — Ketch correction → MessageGears recipient update input.
+ *
+ * Sequence:
+ *   1. getEnvelopeSection — no request/event → null
+ *   2. Email: identities → context → subject (first valid email wins)
+ *   3. No email → null
+ *   4. Attach recipientId + externalRecipientId from identities
+ */
 function parseEmailChangePayload(body) {
   const request = getEnvelopeSection(body);
   if (!request) {

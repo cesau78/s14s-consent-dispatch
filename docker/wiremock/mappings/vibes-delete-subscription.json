@@ -1,0 +1,9 @@
+{
+  "request": {
+    "method": "DELETE",
+    "urlPathPattern": "/companies/local-dev/mobiledb/persons/.*/subscriptions/.*"
+  },
+  "response": {
+    "status": 204
+  }
+}

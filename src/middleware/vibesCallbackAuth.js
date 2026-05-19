@@ -1,15 +1,12 @@
 /**
- * Ketch callback shared-secret auth (KETCH_CALLBACK_AUTH_HEADER / KETCH_CALLBACK_AUTH_VALUE).
- *
- * Local dev: when auth value is "Bearer local-dev", the direct TCP peer must be
- * loopback or Docker bridge (X-Forwarded-For is not trusted for that check).
+ * Vibes callback shared-secret auth (VIBES_CALLBACK_AUTH_HEADER / VIBES_CALLBACK_AUTH_VALUE).
  */
 const config = require('../config');
 const { LOCAL_DEV_CALLBACK_AUTH_VALUE } = require('../config');
 const { isLocalDevCaller } = require('../services/clientIp');
 
 /**
- * ketchCallbackAuth — Express middleware.
+ * vibesCallbackAuth — Express middleware (same control flow as ketchCallbackAuth).
  *
  * Sequence:
  *   1. No configured auth value → 401
@@ -17,13 +14,13 @@ const { isLocalDevCaller } = require('../services/clientIp');
  *   3. Local-dev token from non-local peer → 403
  *   4. next()
  */
-function ketchCallbackAuth(req, res, next) {
-  const expected = config.ketchCallbackAuthValue;
+function vibesCallbackAuth(req, res, next) {
+  const expected = config.vibesCallbackAuthValue;
   if (!expected) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  const headerValue = req.get(config.ketchCallbackAuthHeader);
+  const headerValue = req.get(config.vibesCallbackAuthHeader);
   if (headerValue !== expected) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
@@ -35,4 +32,4 @@ function ketchCallbackAuth(req, res, next) {
   return next();
 }
 
-module.exports = ketchCallbackAuth;
+module.exports = vibesCallbackAuth;

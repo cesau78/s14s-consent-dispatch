@@ -1,12 +1,17 @@
 /**
- * Express application: health check, configurable Ketch callback routes, and a
- * shared error handler for callback-handlers and downstream API failures.
+ * Express app — route registration and global error handler.
+ *
+ * Ketch POST chain: IP allowlist → shared-secret auth → ketchCallbackHandler
+ * Vibes POST chain: IP allowlist → shared-secret auth → vibesCallbackHandler
  */
 const express = require('express');
 const config = require('./config');
 const ketchCallbackIpAllowlist = require('./middleware/ketchCallbackIpAllowlist');
 const ketchCallbackAuth = require('./middleware/ketchCallbackAuth');
 const ketchCallbackHandler = require('./routes/ketchCallbackHandler');
+const vibesCallbackIpAllowlist = require('./middleware/vibesCallbackIpAllowlist');
+const vibesCallbackAuth = require('./middleware/vibesCallbackAuth');
+const vibesCallbackHandler = require('./routes/vibesCallbackHandler');
 
 const app = express();
 
@@ -17,12 +22,23 @@ app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok' });
 });
 
-// Each path from KETCH_CALLBACK_PATHS is a separate Ketch Forwarder endpoint URL.
+// KETCH_CALLBACK_PATHS — each path is a separate Forwarder webhook URL
 for (const path of config.ketchCallbackPaths) {
   app.post(path, ketchCallbackIpAllowlist, ketchCallbackAuth, ketchCallbackHandler);
 }
 
-// Callback-handlers attach error.status (and optional error.body from Vibes).
+// VIBES_CALLBACK_PATH — inbound MO opt-out keywords
+app.post(
+  config.vibesCallbackPath,
+  vibesCallbackIpAllowlist,
+  vibesCallbackAuth,
+  vibesCallbackHandler
+);
+
+/**
+ * Error middleware — handlers set error.status; downstream APIs may set error.body → details.
+ * Sequence: status = error.status || 500 → JSON { error, details? }
+ */
 app.use((error, req, res, next) => {
   const status = error.status || 500;
   const payload = {

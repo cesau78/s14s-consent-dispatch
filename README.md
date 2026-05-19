@@ -6,14 +6,18 @@ The first integrations implemented are:
 
 - **Phone number synchronization to Vibes** when a correction includes an updated mobile number.
 - **Email address synchronization to MessageGears** when a correction includes an updated email and no phone change is present.
+- **Vibes MO SMS opt-out → Ketch** when a subscriber replies with an opt-out keyword (default `no`).
+- **Ketch SMS consent opt-out → Vibes** when a `ConsentRequest` denies SMS marketing, unless the change originated from a Vibes MO reply (loop guard).
+- **Ketch email consent opt-out → MessageGears** when a `ConsentRequest` denies email marketing, unless the change originated from MessageGears (loop guard value reserved for future inbound paths).
 
-Future work in this repo is expected to include consent preference dispatch (opt-in/opt-out, language) to Vibes and MessageGears.
+Future work in this repo may include language preference sync and additional inbound email opt-out sources.
 
 Repository: [github.com/cesau78/s14s-consent-dispatch](https://github.com/cesau78/s14s-consent-dispatch)
 
 ## Table of Contents
 
 - [Overview](#overview)
+- [Code architecture](#code-architecture)
 - [Terminology: Webhook vs Forwarder](#terminology-webhook-vs-forwarder)
 - [Quick Start](#quick-start)
 - [Ketch webhook configuration](#ketch-webhook-configuration)
@@ -33,24 +37,55 @@ Repository: [github.com/cesau78/s14s-consent-dispatch](https://github.com/cesau7
 
 ## Overview
 
-Privacy and marketing systems often disagree on subscriber identity. Ketch acts as the consent and privacy layer; Vibes holds the mobile engagement database. This service sits between them:
-
-1. Ketch sends an outbound **webhook** (HTTP POST) to this service when a relevant event occurs.
-2. The service extracts phone or email changes and downstream identifiers from the payload.
-3. Phone corrections call the Vibes Mobile Database API; email-only corrections call the MessageGears recipient API.
+Privacy and marketing systems often disagree on subscriber identity. Ketch acts as the consent and privacy layer; Vibes and MessageGears hold engagement profiles. This service sits between them and keeps identifiers and consent preferences aligned.
 
 The service is intentionally small: Express, no database, stateless except for outbound API calls. It is designed to run in Docker behind your edge load balancer or API gateway.
 
 ```mermaid
-flowchart LR
-  Ketch["Ketch outbound webhook"]
+flowchart TB
+  subgraph ketch_in [From Ketch]
+    Ketch["Ketch Forwarder"]
+  end
+  subgraph vibes_in [From Vibes]
+    VibesMO["Vibes MO SMS"]
+  end
   Dispatch["s14s-consent-dispatch"]
-  Vibes["Vibes Mobile DB"]
+  subgraph out [Downstream APIs]
+    VibesAPI["Vibes Mobile DB"]
+    MG["MessageGears"]
+    KetchAPI["Ketch Web API"]
+  end
 
-  Ketch -->|"HTTPS POST /ketch/webhook"| Dispatch
-  Dispatch -->|"HTTPS Person API"| Vibes
-  Dispatch -->|"HTTPS Recipient API"| MessageGears["MessageGears"]
+  Ketch -->|"POST /ketch/webhook"| Dispatch
+  VibesMO -->|"POST /vibes/webhook"| Dispatch
+  Dispatch -->|"corrections + SMS opt-out"| VibesAPI
+  Dispatch -->|"corrections + email opt-out"| MG
+  Dispatch -->|"Vibes MO opt-out"| KetchAPI
+  KetchAPI -.->|"ConsentRequest echo"| Ketch
 ```
+
+| Flow | Direction | Trigger |
+|------|-----------|---------|
+| Phone / email **correction** | Ketch → Vibes or MessageGears | `CorrectionRequest`, `CorrectionStatusEvent` |
+| SMS **opt-out** | Ketch → Vibes | `ConsentRequest` with SMS purpose `denied` |
+| Email **opt-out** | Ketch → MessageGears | `ConsentRequest` with email purpose `denied` |
+| SMS **opt-out** | Vibes → Ketch | MO message matches opt-out keyword (default `no`) |
+
+---
+
+## Code architecture
+
+Module layout, dispatcher routing, identity mapping, loop guards, and how to extend the service are documented in **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**. Per-function JSDoc lives in `src/`; numbered sequence control for every pipeline is in **[docs/API.md](docs/API.md)**.
+
+At a glance:
+
+| Layer | Responsibility |
+|-------|----------------|
+| `src/routes/` | HTTP adapters (Express → handler) |
+| `src/callback-handlers/` | One file per inbound action (Ketch correction/consent, Vibes MO) |
+| `src/services/ketchCallbackDispatcher.js` | Routes Ketch `body.kind` to the right handler |
+| `src/services/*Parser.js` | Extract phones, emails, purposes, and IDs from JSON |
+| `src/services/*Client.js` | Outbound calls to Vibes, MessageGears, and Ketch |
 
 ---
 
@@ -100,13 +135,14 @@ Register a **Forwarder** endpoint in the Ketch UI (this is Ketch’s name for th
 | **Header** | Same name as `KETCH_CALLBACK_AUTH_HEADER` (default `Authorization`) |
 | **Header value** | Same string as `KETCH_CALLBACK_AUTH_VALUE` in `.env` |
 
-### Supported message kinds (phone sync)
+### Supported Ketch message kinds
 
 | Kind | Behavior |
 |------|----------|
 | `CorrectionRequest` | Parses phone or email change, updates Vibes and/or MessageGears, returns `200` with `{ "downstream": [...] }` |
 | `CorrectionStatusEvent` | Same parsing and downstream updates as `CorrectionRequest`; returns `200` with `downstream` |
-| Other kinds (e.g. `ConsentRequest`) | Acknowledged with `200` and `{ "downstream": [] }`; no downstream call |
+| `ConsentRequest` | When SMS and/or email marketing purposes are `denied`, propagates to Vibes and/or MessageGears unless `request.context` marks the same downstream origin (see [Consent opt-out loops](#consent-opt-out-loops)) |
+| Other kinds | Acknowledged with `200` and `{ "downstream": [] }`; no downstream call |
 
 Phone corrections align with Ketch’s [Correction](https://github.com/ketch-com/ketch-forwarder/blob/main/api/dsr/v1/Correction.md) DSR flow. Ensure Ketch identities and context variables are configured so this service can resolve a Vibes person (see [Phone Change Flow](#phone-change-flow)).
 
@@ -118,10 +154,15 @@ Phone corrections align with Ketch’s [Correction](https://github.com/ketch-com
 |--------|------|-------------|
 | `GET` | `/health` | Liveness probe (`{ "status": "ok" }`) — not IP/auth protected |
 | `POST` | *(configured)* | Inbound Ketch callbacks — see `KETCH_CALLBACK_PATHS` |
+| `POST` | `/vibes/webhook` (default) | Inbound Vibes MO opt-out callbacks — see `VIBES_CALLBACK_PATH` |
 
-Default webhook paths: `/ketch/webhook`, `/ketch/forwarder` (both use the same callback-handler).
+Default Ketch paths: `/ketch/webhook`, `/ketch/forwarder` (both use the same callback-handler).
 
-### Webhook security
+### Vibes webhook security
+
+Inbound Vibes routes use `vibesCallbackIpAllowlist` and `vibesCallbackAuth` (same pattern as Ketch). Configure `VIBES_CALLBACK_PATH`, `VIBES_CALLBACK_AUTH_*`, and `VIBES_ALLOWED_IPS` (empty or unset denies all). See [Vibes Integration — Inbound MO opt-out](#inbound-mo-opt-out-post-vibeswebhook).
+
+### Ketch webhook security
 
 Inbound Ketch routes are protected by `ketchCallbackIpAllowlist` and `ketchCallbackAuth` (in that order). Configure in `.env`:
 
@@ -130,7 +171,7 @@ Inbound Ketch routes are protected by `ketchCallbackIpAllowlist` and `ketchCallb
 | `KETCH_CALLBACK_PATHS` | Comma-separated POST paths to register (default `/ketch/webhook,/ketch/forwarder`) |
 | `KETCH_CALLBACK_AUTH_HEADER` | Header name Ketch must send (default `Authorization`) |
 | `KETCH_CALLBACK_AUTH_VALUE` | Exact header value Ketch must send (required). Use `Bearer local-dev` for local work — that value also requires a loopback or Docker-bridge TCP peer (`X-Forwarded-For` is ignored). |
-| `KETCH_ALLOWED_IPS` | Comma-separated IPs or CIDR blocks (e.g. `203.0.113.4,198.51.100.0/24`); unset allows any IP |
+| `KETCH_ALLOWED_IPS` | **Required** for production — comma-separated Ketch egress IPs/CIDR; empty or unset **denies all** inbound Ketch callbacks |
 | `TRUST_PROXY` | `true`, `false`, or hop count — use `true` behind a load balancer so `X-Forwarded-For` is honored |
 
 Legacy env names (`KETCH_WEBHOOK_PATHS`, `KETCH_WEBHOOK_AUTH_HEADER`, `KETCH_WEBHOOK_AUTH_VALUE`, `KETCH_FORWARDER_AUTH`) are still read if the `KETCH_CALLBACK_*` vars are unset.
@@ -417,9 +458,9 @@ Acknowledged without calling Vibes.
 
 ---
 
-### ConsentRequest — not handled for phone sync
+### ConsentRequest — marketing opt-out (Vibes and/or MessageGears)
 
-Acknowledged with `200` and `{ "downstream": [] }`; no downstream call. Included so you can verify routing and auth without triggering an update.
+When configured marketing purposes are `denied`, the service calls downstream opt-out APIs if the required identities are present (`person_key` for SMS, `recipient_id` or external id for email). Origin context skips echoing the same change back to the source system.
 
 ```json
 {
@@ -470,7 +511,11 @@ Each file below lives in [`examples/ketch/`](examples/ketch/). See [Local develo
 | [`correction-request-formdata-phone.json`](examples/ketch/correction-request-formdata-phone.json) | `CorrectionRequest` | Phone in **subject.formData** (`mobile_phone`); only `external_person_id` identity | `200` + `downstream: [Vibes]` | `POST .../persons/` |
 | [`correction-status-event-phone.json`](examples/ketch/correction-status-event-phone.json) | `CorrectionStatusEvent` | Phone in **event** envelope (`mobile` identity) | `200` + `downstream: [Vibes]` | `PUT .../persons/vibes-person-abc123` |
 | [`correction-request-no-phone.json`](examples/ketch/correction-request-no-phone.json) | `CorrectionRequest` | Correction with `person_key` but **no** phone or email field | `200` + `downstream: []` | None |
-| [`consent-request.json`](examples/ketch/consent-request.json) | `ConsentRequest` | Consent-only message (future work); routing and auth only | `200` + `downstream: []` | None |
+| [`consent-request.json`](examples/ketch/consent-request.json) | `ConsentRequest` | Mixed purposes; SMS still granted — no Vibes call | `200` + `downstream: []` | None |
+| [`consent-request-sms-denied.json`](examples/ketch/consent-request-sms-denied.json) | `ConsentRequest` | SMS denied — Vibes unsubscribe | `200` + `downstream: [Vibes]` | `DELETE .../subscriptions/...` |
+| [`consent-request-email-denied.json`](examples/ketch/consent-request-email-denied.json) | `ConsentRequest` | Email denied — MessageGears opt-out | `200` + `downstream: [MessageGears]` | `PUT .../recipients/...` |
+| [`consent-request-vibes-origin.json`](examples/ketch/consent-request-vibes-origin.json) | `ConsentRequest` | SMS denied with Vibes origin — loop guard | `200` + `downstream: []` | None |
+| [`examples/vibes/sms-opt-out-no.json`](examples/vibes/sms-opt-out-no.json) | Vibes MO | Keyword `no` — Ketch opt-out | `200` + `downstream: [Ketch]` | `POST .../consent/.../update` |
 | [`correction-request-email.json`](examples/ketch/correction-request-email.json) | `CorrectionRequest` | Email in **identities** plus `recipient_id` | `200` + `downstream: [MessageGears]` | `PUT .../recipients/mg-recipient-abc123` |
 | [`correction-request-context-email.json`](examples/ketch/correction-request-context-email.json) | `CorrectionRequest` | Email in **context** (`emailAddress`) | `200` + `downstream: [MessageGears]` | `PUT` |
 | [`correction-request-formdata-email.json`](examples/ketch/correction-request-formdata-email.json) | `CorrectionRequest` | Email in **subject.formData**; external id only | `200` + `downstream: [MessageGears]` | `POST .../recipients/` |
@@ -489,7 +534,7 @@ There is no official Docker image for the Ketch cloud or the Vibes Mobile DB API
 Starts **consent-dispatch** on port **3000** and a **WireMock** Vibes stub on port **8080**.
 
 ```bash
-cp .env.dev .env.dev.local   # optional; .env.dev is committed with safe defaults
+cp .env.dev .env.dev.local   # optional overrides (gitignored); .env.dev has WireMock defaults
 npm run dev:compose
 # or: docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 ```
@@ -641,11 +686,71 @@ Uses the [Vibes public API](https://developer-platform.vibes.com/) with **HTTP B
 
 See Vibes [Data Syncing Guide](https://developer-platform.vibes.com/docs/data-syncing-guide) for broader integration context.
 
+### Inbound MO opt-out (`POST /vibes/webhook`)
+
+Register a Vibes callback (for example [Unmatched Message Callbacks](https://developer-platform.vibes.com/reference/unmatched-message-callbacks)) to POST MO traffic to this service. When the message body matches `VIBES_SMS_OPT_OUT_KEYWORDS` (default `no`), the service records an SMS marketing opt-out in Ketch via the [Ketch Web API](https://github.com/ketch-sdk/ketch-web-api) `POST /consent/{organizationCode}/update` and stamps `request.context.consent_dispatch_origin=vibes_sms_optout` so the echoed Ketch Forwarder `ConsentRequest` does not call Vibes again.
+
+| Variable | Description |
+|----------|-------------|
+| `VIBES_CALLBACK_PATH` | Default: `/vibes/webhook` |
+| `VIBES_CALLBACK_AUTH_HEADER` / `VIBES_CALLBACK_AUTH_VALUE` | Shared secret (same local-dev pattern as Ketch) |
+| `VIBES_ALLOWED_IPS` | **Required** for production — Vibes egress IPs/CIDR; empty or unset denies all inbound Vibes callbacks |
+| `VIBES_SMS_OPT_OUT_KEYWORDS` | Comma-separated MO keywords (default `no`) |
+| `VIBES_SMS_SUBSCRIPTION_LIST_ID` | Subscription list for Ketch → Vibes unsubscribe |
+
+Sample payload: [`examples/vibes/sms-opt-out-no.json`](examples/vibes/sms-opt-out-no.json).
+
+---
+
+## Consent opt-out loops
+
+### SMS (Vibes ↔ Ketch)
+
+```mermaid
+sequenceDiagram
+  participant User
+  participant Vibes
+  participant Dispatch as s14s-consent-dispatch
+  participant Ketch
+
+  User->>Vibes: MO "no"
+  Vibes->>Dispatch: POST /vibes/webhook
+  Dispatch->>Ketch: setConsent (sms denied + origin marker)
+  Ketch->>Dispatch: ConsentRequest (echo)
+  Note over Dispatch: skip Vibes when context.consent_dispatch_origin=vibes_sms_optout
+```
+
+**Loop guard:** On the Vibes → Ketch write, the service sets Ketch context `consent_dispatch_origin=vibes_sms_optout` (configurable). When Ketch forwards the resulting `ConsentRequest`, the handler checks that context and returns `{ "downstream": [] }` instead of calling Vibes unsubscribe again.
+
+Configure the same context key as a **data subject variable** in Ketch so it is included on Forwarder `ConsentRequest` payloads. If your tenant does not echo context on forwarder events, confirm with Ketch support or add gateway deduplication by `metadata.uid`.
+
+**Ketch → Vibes (non-Vibes origin):** A `ConsentRequest` with SMS marketing `denied` and a resolvable `person_key` triggers `DELETE .../subscriptions/{VIBES_SMS_SUBSCRIPTION_LIST_ID}` (404 is treated as success).
+
+| Variable | Description |
+|----------|-------------|
+| `KETCH_API_BASE_URL` | Default: `https://global.ketchcdn.com/web/v2` |
+| `KETCH_ORGANIZATION_CODE` / `KETCH_PROPERTY_CODE` | Tenant codes |
+| `KETCH_ENVIRONMENT_CODE` / `KETCH_JURISDICTION_CODE` | Target environment and jurisdiction |
+| `KETCH_SMS_MARKETING_PURPOSE_CODES` | Purpose(s) to deny from Vibes MO (default `sms_mktg`) |
+| `KETCH_CONSENT_ORIGIN_CONTEXT_KEY` / `KETCH_CONSENT_ORIGIN_VIBES_SMS` | Origin marker for SMS loop guard |
+
+### Email (MessageGears ↔ Ketch)
+
+When `email_mktg` (or `KETCH_EMAIL_MARKETING_PURPOSE_CODES`) is `denied` and a MessageGears `recipient_id` or external id is present, the service calls `PUT` or `POST` on the recipient API with `MESSAGEGEARS_OPT_OUT_PAYLOAD_JSON` (default `{"emailOptIn":false}`).
+
+Skip MessageGears when `request.context.consent_dispatch_origin` equals `KETCH_CONSENT_ORIGIN_MESSAGEGEARS_EMAIL` (default `messagegears_email_optout`) — reserved for future inbound email opt-out sources.
+
+| Variable | Description |
+|----------|-------------|
+| `KETCH_EMAIL_MARKETING_PURPOSE_CODES` | Purpose(s) that trigger MessageGears opt-out (default `email_mktg`) |
+| `KETCH_CONSENT_ORIGIN_MESSAGEGEARS_EMAIL` | Origin marker for email loop guard |
+| `MESSAGEGEARS_OPT_OUT_PAYLOAD_JSON` | JSON body merged into recipient PUT/POST |
+
 ---
 
 ## MessageGears Integration
 
-Email corrections use a configurable REST profile API (see `messageGearsClient.js`). WireMock stubs mirror the Vibes dev pattern on port **8080**.
+Email corrections and consent opt-outs use a configurable REST profile API (see `messageGearsClient.js`). WireMock stubs mirror the Vibes dev pattern on port **8080**.
 
 | Variable | Description |
 |----------|-------------|
@@ -666,29 +771,25 @@ Email corrections use a configurable REST profile API (see `messageGearsClient.j
 
 ## Configuration
 
-Copy `.env.example` to `.env` and set values before running in production.
+Environment files group settings by vendor (**Ketch** → **Vibes** → **MessageGears**), plus a **Server** block at the top:
 
-```bash
-PORT=3000
-TRUST_PROXY=true
+| File | Purpose |
+|------|---------|
+| [`.env.example`](.env.example) | Template — copy to `.env` for production or real sandbox credentials |
+| [`.env.dev`](.env.dev) | Committed WireMock defaults for `npm run dev:compose` |
+| `.env` | Your secrets (gitignored) |
+| `.env.dev.local` | Optional overrides on top of `.env.dev` (gitignored) |
 
-KETCH_CALLBACK_PATHS=/ketch/webhook,/ketch/forwarder
-KETCH_CALLBACK_AUTH_HEADER=Authorization
-KETCH_CALLBACK_AUTH_VALUE=Bearer <shared-secret>
-KETCH_ALLOWED_IPS=203.0.113.4,198.51.100.0/24
+Copy [`.env.example`](.env.example) to `.env` and set values before running in production.
 
-KETCH_VIBES_PERSON_KEY_IDENTITY_SPACES=vibes_person_key,person_key
-KETCH_EXTERNAL_PERSON_ID_IDENTITY_SPACES=account_id,external_person_id,customer_id
-KETCH_PHONE_IDENTITY_SPACES=phone,mobile,mdn,mobile_phone
-KETCH_PHONE_CONTEXT_KEYS=phone,mobilePhone,mobile_phone,mdn
+| Block | Prefix | Contents |
+|-------|--------|----------|
+| Server | — | `PORT`, `TRUST_PROXY` |
+| Ketch | `KETCH_*` | Forwarder inbound, Web API, consent, loop guards, Forwarder→downstream identity keys |
+| Vibes | `VIBES_*` | MO inbound webhook, Mobile DB API |
+| MessageGears | `MESSAGEGEARS_*` | Recipient API, opt-out JSON |
 
-VIBES_COMPANY_KEY=
-VIBES_API_USERNAME=
-VIBES_API_PASSWORD=
-VIBES_API_VERSION=2
-```
-
-All list variables are comma-separated and matched case-insensitively.
+All comma-separated list variables are matched case-insensitively. Which env var affects which code path is summarized in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ---
 
@@ -744,11 +845,11 @@ A **husky** `pre-commit` hook runs `npm run build`, which fails the commit if co
 
 Jest + Supertest cover:
 
-- Callback IP allowlist and auth middleware (configurable paths)
-- Payload parsing (identities, context, form data, status events)
-- Ketch phone callback-handler (correction flow, ignored kinds, validation errors)
-- Vibes client (PUT vs POST, error handling)
-- Route integration
+- Ketch and Vibes auth / IP allowlist middleware
+- Correction and consent payload parsers
+- All callback-handlers (phone, email, consent, Vibes MO)
+- Vibes, MessageGears, and Ketch outbound clients
+- Dispatcher routing and route integration
 
 Coverage report is written to `coverage/`.
 
@@ -758,41 +859,46 @@ Coverage report is written to `coverage/`.
 
 ```
 s14s-consent-dispatch/
+├── docs/
+│   ├── ARCHITECTURE.md      # Code layout, flows, module reference (start here for dev)
+│   └── API.md               # Function catalog + sequence control (branching, call order)
 ├── src/
-│   ├── app.js                 # Express app, error handler, routes
-│   ├── server.js              # Entry point
-│   ├── config.js              # Environment configuration
+│   ├── app.js               # Express app: /health, Ketch paths, /vibes/webhook
+│   ├── server.js            # Entry point
+│   ├── config.js            # All environment variables
 │   ├── middleware/
-│   │   ├── ketchCallbackIpAllowlist.js
-│   │   └── ketchCallbackAuth.js
+│   │   ├── ketchCallbackAuth.js / ketchCallbackIpAllowlist.js
+│   │   └── vibesCallbackAuth.js / vibesCallbackIpAllowlist.js
 │   ├── routes/
-│   │   └── ketchCallbackHandler.js
+│   │   ├── ketchCallbackHandler.js   # → ketchCallbackDispatcher
+│   │   └── vibesCallbackHandler.js   # → vibesSmsOptOutCallbackHandler
 │   ├── callback-handlers/
-│   │   ├── ketchPhoneCallbackHandler.js
-│   │   └── ketchEmailCallbackHandler.js
+│   │   ├── ketchPhoneCallbackHandler.js    # Ketch correction → Vibes phone
+│   │   ├── ketchEmailCallbackHandler.js    # Ketch correction → MessageGears email
+│   │   ├── ketchConsentCallbackHandler.js  # Ketch ConsentRequest → opt-out
+│   │   └── vibesSmsOptOutCallbackHandler.js # Vibes MO → Ketch consent
 │   └── services/
-│       ├── clientIp.js
-│       ├── emailNormalizer.js
-│       ├── ipAllowlist.js
-│       ├── ketchCallbackDispatcher.js
+│       ├── ketchCallbackDispatcher.js  # Routes by body.kind
+│       ├── ketchPayloadParser.js         # Correction: phone/email
+│       ├── ketchConsentPayloadParser.js  # Consent: purposes + IDs
+│       ├── ketchConsentClient.js         # Outbound Ketch setConsent
+│       ├── consentOrigin.js              # Loop-guard context helpers
+│       ├── vibesInboundParser.js         # Vibes MO keyword parsing
+│       ├── vibesClient.js                # Vibes Person + subscription APIs
+│       ├── messageGearsClient.js         # MessageGears recipient APIs
 │       ├── ketchCorrectionUtils.js
-│       ├── ketchPayloadParser.js
-│       ├── messageGearsClient.js
-│       ├── phoneNormalizer.js
-│       └── vibesClient.js
-├── examples/ketch/          # Sample Ketch webhook JSON bodies
-├── docker/wiremock/         # WireMock stubs for local Vibes API
-├── scripts/smoke-local.js   # POST all example payloads (npm run smoke:local)
+│       ├── callbackResponse.js
+│       └── … (normalizers, ipAllowlist, clientIp)
+├── examples/
+│   ├── ketch/               # Forwarder sample bodies
+│   └── vibes/               # MO opt-out sample bodies
+├── docker/wiremock/mappings/
+├── scripts/smoke-local.js
 ├── tests/
-├── Dockerfile
-├── docker-compose.yml
-├── docker-compose.dev.yml   # Overlay: WireMock + .env.dev
-├── .github/workflows/       # CodeQL, dependency review
-├── .github/dependabot.yml
-├── .env.example
-├── .env.dev                 # Safe defaults for local Docker dev
-└── package.json
+└── …
 ```
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for a full module table and sequence diagrams.
 
 ---
 
@@ -800,11 +906,11 @@ s14s-consent-dispatch/
 
 1. **Vibes MDN updates** — Vibes does not allow changing an MDN on an existing person record in all cases; updates may return `409`. You may need a remove-then-add or merge workflow for true number changes. See [Update person by person_key](https://developer-platform.vibes.com/reference/put_update-person-by-person_key).
 
-2. **Scope** — Phone (Vibes) and email (MessageGears) sync via correction-related forwarder kinds are implemented. Consent preference dispatch is not yet built.
+2. **Scope** — SMS and email marketing opt-out sync via `ConsentRequest` are implemented (Vibes MO → Ketch, Ketch → Vibes/MessageGears). Language preferences and inbound email opt-out sources are not yet built.
 
 3. **Idempotency** — Duplicate Ketch deliveries may result in duplicate Vibes API calls; add deduplication at the gateway or via `metadata.uid` if required.
 
-4. **Auth** — Shared header secret plus optional IP allowlist; rotate via env reload/redeploy. Confirm Ketch egress IPs with your account team before relying on `KETCH_ALLOWED_IPS` alone.
+4. **Auth** — Shared header secret plus required IP allowlists (`KETCH_ALLOWED_IPS`, `VIBES_ALLOWED_IPS`); empty lists deny all. Confirm vendor egress IPs with your account teams before go-live.
 
 ---
 

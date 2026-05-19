@@ -1,7 +1,8 @@
 /**
- * Standard dispatch response returned for all successful Ketch callback handling.
+ * Standard JSON shape returned to Ketch Forwarder and Vibes callbacks.
  */
 
+/** formatDownstreamTimestamp — UTC compact string for downstream[].updated. */
 function formatDownstreamTimestamp(date = new Date()) {
   const pad = (value, length = 2) => String(value).padStart(length, '0');
   return (
@@ -15,6 +16,7 @@ function formatDownstreamTimestamp(date = new Date()) {
   );
 }
 
+/** buildDownstreamEntry — one row in body.downstream[]. */
 function buildDownstreamEntry(system, updateStatus, updatedAt = new Date()) {
   return {
     system,
@@ -23,6 +25,7 @@ function buildDownstreamEntry(system, updateStatus, updatedAt = new Date()) {
   };
 }
 
+/** buildDispatchResponse — always HTTP 200 with downstream array (may be empty). */
 function buildDispatchResponse(downstream = []) {
   return {
     status: 200,

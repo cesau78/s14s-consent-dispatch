@@ -42,7 +42,23 @@ const cases = [
   {
     file: 'consent-request.json',
     downstream: null,
-    note: 'ConsentRequest — no downstream updates'
+    note: 'ConsentRequest — sms still granted; no downstream updates'
+  },
+  {
+    file: 'consent-request-sms-denied.json',
+    downstream: 'Vibes',
+    note: 'ConsentRequest — sms denied; Vibes unsubscribe',
+    acceptStatuses: [200, 204]
+  },
+  {
+    file: 'consent-request-email-denied.json',
+    downstream: 'MessageGears',
+    note: 'ConsentRequest — email denied; MessageGears opt-out'
+  },
+  {
+    file: 'consent-request-vibes-origin.json',
+    downstream: null,
+    note: 'ConsentRequest — Vibes origin loop guard; empty downstream'
   },
   {
     file: 'correction-request-email.json',
@@ -78,9 +94,9 @@ async function assertWireMockStubs() {
     }
     const data = await response.json();
     const count = data.meta && data.meta.total;
-    if (typeof count === 'number' && count < 4) {
+    if (typeof count === 'number' && count < 6) {
       console.warn(
-        `WireMock at ${wiremockUrl} has ${count} stub(s); expected 4 (Vibes + MessageGears). ` +
+        `WireMock at ${wiremockUrl} has ${count} stub(s); expected 6 (Vibes + MessageGears + Ketch). ` +
           'Recreate WireMock after adding mappings:\n' +
           '  docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --force-recreate wiremock\n'
       );
@@ -90,7 +106,7 @@ async function assertWireMockStubs() {
   }
 }
 
-function validateDownstream(body, expectedSystem) {
+function validateDownstream(body, expectedSystem, acceptStatuses = [200]) {
   if (!body || !Array.isArray(body.downstream)) {
     return false;
   }
@@ -102,7 +118,7 @@ function validateDownstream(body, expectedSystem) {
   return body.downstream.some(
     (entry) =>
       entry.system === expectedSystem &&
-      entry.update === 200 &&
+      acceptStatuses.includes(entry.update) &&
       typeof entry.updated === 'string' &&
       /^\d{8}T\d{2}:\d{2}:\d{2}\.\d{3}$/.test(entry.updated)
   );
@@ -133,7 +149,11 @@ async function postExample(testCase) {
   }
 
   const statusOk = response.status === 200;
-  const bodyOk = validateDownstream(responseBody, testCase.downstream);
+  const bodyOk = validateDownstream(
+    responseBody,
+    testCase.downstream,
+    testCase.acceptStatuses
+  );
   const ok = statusOk && bodyOk;
   const prefix = ok ? 'OK' : 'FAIL';
 
@@ -150,12 +170,58 @@ async function postExample(testCase) {
   }
 }
 
+async function postVibesExample(testCase) {
+  const filePath = path.join(__dirname, '..', 'examples', 'vibes', testCase.file);
+  const body = fs.readFileSync(filePath, 'utf8');
+  const headers = { 'Content-Type': 'application/json' };
+  if (auth) {
+    headers.Authorization = auth;
+  }
+
+  const vibesPath = process.env.SMOKE_VIBES_PATH || '/vibes/webhook';
+  const response = await fetch(`${baseUrl}${vibesPath}`, {
+    method: 'POST',
+    headers,
+    body
+  });
+
+  const responseText = await response.text();
+  let responseBody = null;
+  if (responseText) {
+    try {
+      responseBody = JSON.parse(responseText);
+    } catch {
+      responseBody = responseText;
+    }
+  }
+
+  const statusOk = response.status === 200;
+  const bodyOk = validateDownstream(responseBody, testCase.downstream, testCase.acceptStatuses);
+  const ok = statusOk && bodyOk;
+  const prefix = ok ? 'OK' : 'FAIL';
+
+  console.log(`${prefix}  vibes/${testCase.file}  →  ${response.status} (expected 200)`);
+  console.log(`      ${testCase.note}`);
+  if (!ok) {
+    console.log(`      body: ${JSON.stringify(responseBody).slice(0, 240)}`);
+    process.exitCode = 1;
+  }
+}
+
 async function main() {
   console.log(`Smoke testing ${baseUrl}/ketch/webhook\n`);
   await assertWireMockStubs();
   for (const testCase of cases) {
     await postExample(testCase);
   }
+
+  console.log(`\nSmoke testing ${baseUrl}/vibes/webhook\n`);
+  await postVibesExample({
+    file: 'sms-opt-out-no.json',
+    downstream: 'Ketch',
+    acceptStatuses: [200, 204],
+    note: 'Vibes MO "no" — Ketch consent update'
+  });
   if (process.exitCode) {
     console.log('\nOne or more examples failed.');
   } else {

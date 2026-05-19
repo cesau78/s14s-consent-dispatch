@@ -1,8 +1,9 @@
 /**
- * Vibes Mobile Database API client for updating subscriber phone numbers (MDN).
+ * Vibes Mobile Database API — person phone updates and SMS subscription unsubscribe.
  */
 const config = require('../config');
 
+/** getAuthHeader — Basic auth from VIBES_API_USERNAME / VIBES_API_PASSWORD. */
 function getAuthHeader() {
   const token = Buffer.from(
     `${config.vibesApiUsername}:${config.vibesApiPassword}`,
@@ -21,6 +22,17 @@ function buildPersonCollectionUrl() {
   return `${base}/companies/${encodeURIComponent(config.vibesCompanyKey)}/mobiledb/persons/`;
 }
 
+function buildSubscriptionUrl(personKey, subscriptionListId) {
+  const base = config.vibesApiBaseUrl.replace(/\/$/, '');
+  return (
+    `${base}/companies/${encodeURIComponent(config.vibesCompanyKey)}/mobiledb/persons/` +
+    `${encodeURIComponent(personKey)}/subscriptions/${encodeURIComponent(subscriptionListId)}`
+  );
+}
+
+/**
+ * vibesRequest — fetch with Vibes auth headers; throws on non-OK with .status and .body.
+ */
 async function vibesRequest(url, options) {
   const response = await fetch(url, {
     ...options,
@@ -57,9 +69,11 @@ async function vibesRequest(url, options) {
 }
 
 /**
- * Sync a phone change to Vibes.
- * - With personKey: update an existing person (PUT).
- * - With only externalPersonId: create or merge via collection POST.
+ * updatePersonPhone — Ketch phone correction → Vibes.
+ *
+ * Sequence:
+ *   1. Validate company key + credentials
+ *   2. personKey → PUT person; else externalPersonId → POST collection; else throw
  */
 async function updatePersonPhone({ personKey, externalPersonId, phone }) {
   if (!config.vibesCompanyKey) {
@@ -96,9 +110,45 @@ async function updatePersonPhone({ personKey, externalPersonId, phone }) {
   });
 }
 
+/**
+ * unsubscribePersonFromList — Ketch SMS opt-out → DELETE subscription (VIBES_SMS_SUBSCRIPTION_LIST_ID).
+ *
+ * Sequence:
+ *   1. Validate config + personKey + list id
+ *   2. DELETE subscription URL
+ *   3. 404 → treat as success (already unsubscribed)
+ */
+async function unsubscribePersonFromList(personKey, subscriptionListId = config.vibesSmsSubscriptionListId) {
+  if (!config.vibesCompanyKey) {
+    throw new Error('VIBES_COMPANY_KEY is required');
+  }
+  if (!config.vibesApiUsername || !config.vibesApiPassword) {
+    throw new Error('VIBES_API_USERNAME and VIBES_API_PASSWORD are required');
+  }
+  if (!personKey) {
+    throw new Error('personKey is required to unsubscribe from Vibes');
+  }
+  if (!subscriptionListId) {
+    throw new Error('VIBES_SMS_SUBSCRIPTION_LIST_ID is required');
+  }
+
+  try {
+    return await vibesRequest(buildSubscriptionUrl(personKey, subscriptionListId), {
+      method: 'DELETE'
+    });
+  } catch (error) {
+    if (error.status === 404) {
+      return { status: 204, body: null };
+    }
+    throw error;
+  }
+}
+
 module.exports = {
   updatePersonPhone,
+  unsubscribePersonFromList,
   buildPersonUrl,
   buildPersonCollectionUrl,
+  buildSubscriptionUrl,
   getAuthHeader
 };

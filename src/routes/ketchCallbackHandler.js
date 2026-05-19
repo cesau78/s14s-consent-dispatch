@@ -1,9 +1,11 @@
 /**
- * HTTP adapter for Ketch Forwarder POSTs. Delegates to callback-handlers and maps
- * their { status, body } result onto the Express response.
+ * HTTP adapter: Ketch Forwarder POST → dispatchKetchCallback → JSON response.
  */
 const { dispatchKetchCallback } = require('../services/ketchCallbackDispatcher');
 
+/**
+ * ketchCallbackHandler — try/catch wrapper; errors go to app.js error middleware.
+ */
 async function ketchCallbackHandler(req, res, next) {
   try {
     const result = await dispatchKetchCallback(req.body);

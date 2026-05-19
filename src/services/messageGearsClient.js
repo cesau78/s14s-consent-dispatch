@@ -1,5 +1,5 @@
 /**
- * MessageGears recipient profile API client for email address corrections.
+ * MessageGears recipient API — email corrections and marketing opt-out profile updates.
  */
 const config = require('../config');
 
@@ -17,6 +17,7 @@ function buildRecipientCollectionUrl() {
   return `${base}/api/v1/accounts/${encodeURIComponent(config.messageGearsAccountId)}/recipients/`;
 }
 
+/** messageGearsRequest — fetch with Bearer auth; throws on non-OK with .status and .body. */
 async function messageGearsRequest(url, options) {
   const response = await fetch(url, {
     ...options,
@@ -52,9 +53,9 @@ async function messageGearsRequest(url, options) {
 }
 
 /**
- * Sync an email change to MessageGears.
- * - With recipientId: update an existing recipient (PUT).
- * - With only externalRecipientId: create or merge via collection POST.
+ * updateRecipientEmail — Ketch email correction → MessageGears.
+ *
+ * Sequence: validate config → recipientId PUT else externalRecipientId POST else throw
  */
 async function updateRecipientEmail({ recipientId, externalRecipientId, email }) {
   if (!config.messageGearsAccountId) {
@@ -89,8 +90,47 @@ async function updateRecipientEmail({ recipientId, externalRecipientId, email })
   });
 }
 
+/**
+ * optOutRecipient — Ketch email marketing denied → MessageGears (MESSAGEGEARS_OPT_OUT_PAYLOAD_JSON).
+ *
+ * Same PUT/POST branch as updateRecipientEmail; payload from config (default emailOptIn: false).
+ */
+async function optOutRecipient({ recipientId, externalRecipientId }) {
+  if (!config.messageGearsAccountId) {
+    throw new Error('MESSAGEGEARS_ACCOUNT_ID is required');
+  }
+  if (!config.messageGearsApiKey) {
+    throw new Error('MESSAGEGEARS_API_KEY is required');
+  }
+
+  const payload = {
+    ...config.messageGearsOptOutPayload
+  };
+
+  if (externalRecipientId) {
+    payload.externalRecipientId = externalRecipientId;
+  }
+
+  if (recipientId) {
+    return messageGearsRequest(buildRecipientUrl(recipientId), {
+      method: 'PUT',
+      body: JSON.stringify(payload)
+    });
+  }
+
+  if (!externalRecipientId) {
+    throw new Error('recipientId or externalRecipientId is required to opt out in MessageGears');
+  }
+
+  return messageGearsRequest(buildRecipientCollectionUrl(), {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+}
+
 module.exports = {
   updateRecipientEmail,
+  optOutRecipient,
   buildRecipientUrl,
   buildRecipientCollectionUrl,
   getAuthHeader
