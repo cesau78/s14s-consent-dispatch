@@ -4,9 +4,12 @@ services:
   consent-dispatch:
     env_file:
       - .env.dev
+      - path: .env.dev.local
+        required: false
     environment:
       VIBES_API_BASE_URL: http://wiremock:8080
       MESSAGEGEARS_API_BASE_URL: http://wiremock:8080
+      KETCH_API_BASE_URL: http://wiremock:8080/web/v2
     depends_on:
       wiremock:
         condition: service_started
